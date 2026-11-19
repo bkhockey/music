@@ -2,65 +2,84 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0b1020">
-  <title>TrackTime — Song Timeline</title>
-  <link rel="stylesheet" href="styles.css?v=20261119b">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101114">
+  <meta name="description" content="TrackTime — guess when albums were released.">
+  <title>TrackTime</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <a class="brand" href="#"><span class="brand-mark">♪</span> TrackTime</a>
-      <div class="top-actions">
-        <span class="pill" id="round-label">ROUND 1</span>
-        <button class="ghost small" id="new-game">New game</button>
+  <main class="app-shell">
+    <header class="topbar" aria-label="Game status">
+      <a class="wordmark" href="./" aria-label="TrackTime home">TRACK<span>TIME</span></a>
+      <div class="status">
+        <div class="hearts" id="hearts" aria-label="3 hearts remaining">
+          <span class="heart" aria-hidden="true">♥</span>
+          <span class="heart" aria-hidden="true">♥</span>
+          <span class="heart" aria-hidden="true">♥</span>
+        </div>
+        <div class="round-counter"><span id="round-count">1</span><small>ROUND</small></div>
       </div>
     </header>
 
-    <section class="mystery-section" aria-label="Mystery album and music player">
-      <div class="mystery-heading">
-        <div>
-          <p class="eyebrow">MYSTERY ALBUM</p>
-          <h2>Take a listen</h2>
-          <p class="muted">Listen to the song, then drag the album artwork into the right place.</p>
-        </div>
-        <div id="drag-card" class="album-card mystery-album" role="button" tabindex="0" aria-label="Drag the mystery album to a position on your timeline">
-          <div class="cd-case">
-            <img id="mystery-cover" alt="Mystery album artwork" src="">
-            <span class="cover-placeholder" id="cover-placeholder">♪</span>
-            <span class="card-glare" aria-hidden="true"></span>
+    <section class="game-area" id="game-area" aria-live="polite">
+      <div class="mystery-area">
+        <div class="mystery-card" id="mystery-card" role="button" tabindex="0"
+             aria-label="Mystery album cover. Drag it to the timeline to guess its release year.">
+          <div class="cover-frame">
+            <img id="mystery-artwork" alt="Mystery album artwork" draggable="false">
+            <div class="cover-gloss" aria-hidden="true"></div>
+            <div class="mystery-stamp" aria-hidden="true">?</div>
           </div>
-          <div class="year-float" id="mystery-year" aria-live="polite"></div>
+        </div>
+        <div class="track-prompt">
+          <div class="eyebrow">MYSTERY TRACK</div>
+          <div class="track-name">Listen and place it.</div>
+          <div class="audio-status" id="audio-status" role="status">Loading preview</div>
         </div>
       </div>
 
-      <p class="hint" id="track-hint">The preview starts automatically. If your browser blocks sound, click or tap anywhere once to enable playback.</p>
-      <div id="error-box" class="notice hidden"></div>
-      <span id="mystery-title" hidden>Mystery track</span>
-      <span id="mystery-artist" hidden>Artist and release date are hidden</span>
-    </section>
-
-    <audio id="audio" preload="auto"></audio>
-
-    <section class="timeline-section">
-      <div class="section-title">
-        <div><p class="eyebrow">YOUR TIMELINE</p><h2>Place the album</h2></div>
-        <div class="status-cluster">
-          <div class="hearts" id="hearts" aria-label="3 hearts remaining">♥ ♥ ♥</div>
-          <div class="score"><strong id="score">0</strong><span>correct</span></div>
+      <div class="timeline-section">
+        <div class="timeline-heading">
+          <span>YOUR TIMELINE</span>
+          <span class="timeline-hint" id="timeline-hint">Drag the cover to its place</span>
+        </div>
+        <div class="timeline-viewport" id="timeline-viewport">
+          <div class="timeline" id="timeline" aria-label="Album timeline"></div>
+        </div>
+        <div class="timeline-edge-labels" aria-hidden="true">
+          <span>OLDER</span><span>NEWER</span>
         </div>
       </div>
-      <p class="muted instruction">Drag the mystery album into the timeline where you think its release year belongs.</p>
-      <div id="timeline" class="timeline" aria-label="Song timeline"></div>
-      <div id="result" class="result hidden" aria-live="polite"></div>
-      <div class="next-row"><button id="next-button" class="primary" disabled>Next track <span>→</span></button></div>
+      <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
     </section>
 
-    <footer>
-      <p>TrackTime is an independent demo. Music previews and catalog release dates are provided by Apple’s iTunes Search API.</p>
-      <p><a href="https://performance-partners.apple.com/search-api" target="_blank" rel="noreferrer">iTunes Search API</a></p>
-    </footer>
+    <section class="loading-screen" id="loading-screen">
+      <div class="loader-disc"></div>
+      <p id="loading-message">Building your music timeline…</p>
+    </section>
+
+    <section class="overlay hidden" id="game-over" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+      <div class="dialog-card">
+        <div class="dialog-kicker">TRACKTIME</div>
+        <h1 id="game-over-title">Game over</h1>
+        <p id="final-score">You placed 0 albums.</p>
+        <button class="primary-button" id="restart-button" type="button">Play again</button>
+      </div>
+    </section>
+
+    <section class="overlay hidden" id="error-screen" role="alertdialog" aria-modal="true">
+      <div class="dialog-card">
+        <div class="dialog-kicker">TRACKTIME</div>
+        <h1>Couldn't load the music</h1>
+        <p id="error-message">Apple's music catalogue is temporarily unavailable.</p>
+        <button class="primary-button" id="retry-button" type="button">Try again</button>
+      </div>
+    </section>
+
+    <audio id="preview-audio" preload="none" playsinline></audio>
+    <footer class="footer-note">MUSIC DATA PROVIDED BY APPLE'S ITUNES CATALOG</footer>
   </main>
-  <script src="app.js?v=20261119b"></script>
 </body>
 </html>

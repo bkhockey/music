@@ -1,66 +1,62 @@
-# TrackTime — Song Timeline prototype
+# TrackTime
 
-A static browser-game prototype designed for GitHub Pages. No backend, build step, API key, or paid hosting is required.
+A static browser-based music release-year guessing game. Built with plain HTML, CSS and JavaScript for GitHub Pages.
+
+## Files
+
+- `index.html` — page structure and accessible game overlays
+- `styles.css` — responsive layout, artwork styling and timeline animations
+- `app.js` — Apple iTunes Search/Lookup integration, game state, audio and pointer drag interaction
 
 ## Run locally
 
-Open `index.html` in a browser, or serve this folder with a local static server:
+Because the game uses browser `fetch()` requests to Apple's catalogue, run it from a local web server rather than opening `index.html` as a `file://` URL.
+
+For example, with Python installed:
 
 ```bash
 python -m http.server 8000
 ```
 
-Then visit http://localhost:8000.
+Then open <http://localhost:8000>.
 
-## Publish on GitHub Pages
+## Deploy to GitHub Pages
 
-1. Create a new GitHub repository (for example `tracktime`).
-2. Upload `index.html`, `styles.css`, `app.js`, and `README.md` to the repository root.
-3. Open **Settings → Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch**.
-5. Select branch `main`, folder `/ (root)`, then Save.
-6. Wait for GitHub Pages to publish the site.
+1. Create or open the repository that publishes `https://bkhockey.github.io/music/`.
+2. Upload the four project files to the repository's publishing root.
+3. Commit the changes.
+4. In GitHub, open **Settings → Pages** and confirm the publishing source points to the correct branch and folder.
+5. Visit `https://bkhockey.github.io/music/`.
 
-## Data flow
+No build step, backend, API key or paid service is required.
 
-- Apple iTunes Search API is used to find a playable preview URL and artwork.
-- Apple results from Platinum, Gold, Diamond, Deluxe, Remastered, Anniversary, Expanded, Reissue, Special/Limited/Collector’s Edition, Legacy Edition, Greatest Hits/Best Of, box sets and bonus-track releases are filtered out. Remaster/re-recording markers in track titles are filtered too. Tracks without an album title are skipped.
-- Apple's catalog `releaseDate` is the sole source of the year used in gameplay. MusicBrainz is no longer queried, avoiding mismatches between recording-level first-release dates and the Apple album/preview entry.
+## Music catalogue
 
-## Gameplay controls
+TrackTime uses Apple's public iTunes Search API:
 
-- The mystery album is displayed separately above the timeline; drag its artwork onto one of the marked gaps to place it before, between, or after revealed albums.
-- Dragging uses pointer events, so it supports mouse, pen, and touch input. Keyboard users can focus a timeline gap and press Enter or Space to place the track there.
-- Every album uses the same square artwork dimensions. Album cards are styled like clear physical CD jewel cases, with a cursor-reactive 3D tilt and holographic light sheen on desktop.
-- Album artwork has no title or artist text on it. Revealed release years float underneath each album. Song and artist details appear only in the answer explanation.
-- The old row of placement buttons has been removed; the timeline gaps are the placement targets.
+- Search endpoint: `https://itunes.apple.com/search`
+- Lookup endpoint: `https://itunes.apple.com/lookup`
 
-## Important limitations
+Search results supply tracks and preview URLs. Album release years are taken from the album collection's own `releaseDate` returned by Lookup, rather than the individual track release date.
 
-- This is a prototype with a small hand-picked seed list, not a complete music catalog.
-- Apple preview availability varies by country and track. Tracks without a preview are skipped.
-- Apple catalog dates are consistent with the selected Apple entry, but may still represent a later catalog edition rather than the original commercial release. Edition filtering relies on Apple catalog naming, so an oddly named special edition can still slip through, and an ordinary album whose title contains one of the edition markers can be excluded.
-- The prototype compares by year, because many songs have incomplete month/day data. Songs from the same year can therefore be placed in either order.
-- Players start with three hearts. An incorrect placement costs one heart; the game ends at zero hearts. During a game, only one distinct album is allowed for each release year; additional songs from that same album are allowed. The year is reserved when a track is presented, even if the guess is incorrect.
-- Previews attempt to autoplay and fade in over 1.4 seconds, then fade out during the final 1.5 seconds of the 30-second clip. Browsers may block audible autoplay until the first user interaction; any click, tap or key press retries playback. Later rounds attempt to autoplay again.
-- Browser access to third-party APIs depends on their current CORS policies, network availability and service terms. If a provider blocks browser requests, a small proxy/backend will be needed.
-- Apple preview URLs and artwork are supplied by Apple. Review Apple's terms before commercial use. 
+The browser caches the verified catalogue in local storage for 24 hours and keeps a small recent-track history to reduce repetition. The game also avoids placing a different album in a year already occupied by the timeline.
 
-## Next improvements
+### Catalogue limitations
 
-- Build a curated dataset with verified original release dates and album editions.
-- Expand the seed catalog and pre-validate song/artist matches.
-- Add genre, decade, difficulty and multiplayer modes.
-- Use a curated dataset with verified original release dates.
+Apple's public catalogue does not provide a definitive original-first-release flag. TrackTime filters common reissue, deluxe and compilation wording, but metadata quality varies by country and album. It is possible for an unusual edition to pass the filter.
 
+Apple preview availability and autoplay are controlled by the browser and Apple catalogue. If autoplay is blocked, the game retries playback after the first user interaction. A missing preview does not stop the game.
 
-## Latest interface update
-- Removed the large introductory hero/header copy to give the game more vertical room.
-- Removed all visible drop-slot indicators from the timeline.
-- While dragging, an empty animated gap opens between albums; nearby albums slide apart to make room.
+## Interaction
 
+The mystery cover uses Pointer Events, which support mouse, pen and touch. While dragging, timeline covers physically translate away from the intended insertion point. Releasing submits the position; cancelling returns the covers to their original positions.
 
-### Timeline insertion animation update
-- Removed legacy visible drop-slot styles.
-- The drag insertion gap is completely invisible; timeline album cards slide apart using a FLIP translate animation.
-- Added cache-busting query versions to CSS and JavaScript assets.
+## Validation
+
+The project is dependency-free. Syntax validation can be run with:
+
+```bash
+node --check app.js
+```
+
+A syntax check does not replace testing in a live browser. Verify Apple API access, preview playback, touch behavior and GitHub Pages deployment in the target browsers.

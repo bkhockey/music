@@ -1,445 +1,503 @@
-// TrackTime prototype. Static GitHub Pages app; no server or API key required.
-const SEEDS = [
-  ["Bohemian Rhapsody","Queen"],["Billie Jean","Michael Jackson"],["Like a Prayer","Madonna"],
-  ["Smells Like Teen Spirit","Nirvana"],["...Baby One More Time","Britney Spears"],
-  ["Crazy in Love","Beyoncé"],["Rolling in the Deep","Adele"],["Blinding Lights","The Weeknd"],
-  ["Take On Me","a-ha"],["Wonderwall","Oasis"],["Dancing Queen","ABBA"],
-  ["Lose Yourself","Eminem"],["Shape of You","Ed Sheeran"],["Bad Romance","Lady Gaga"],
-  ["Sweet Child O' Mine","Guns N' Roses"],["I Want It That Way","Backstreet Boys"],
-  ["Seven Nation Army","The White Stripes"],["Get Lucky","Daft Punk"],["Waterloo","ABBA"],
-  ["Umbrella","Rihanna"],["Hotel California","Eagles"],["Thriller","Michael Jackson"],
-  ["Hips Don't Lie","Shakira"],["Mr. Brightside","The Killers"],["Respect","Aretha Franklin"],
-  ["Hey Ya!","Outkast"],["Africa","Toto"],["Poker Face","Lady Gaga"],
-  ["Wonder","Shawn Mendes"],["Flowers","Miley Cyrus"]
-];
+(() => {
+  "use strict";
 
-const $ = id => document.getElementById(id);
-const audio = $("audio");
-let timeline = [], current = null, round = 1, score = 0, hearts = 3, answered = false, fadeFrame = null, fadingOut = false, autoplayBlocked = false;
-// A game may use several songs from one album, but never different albums for the same year.
-let albumByYear = new Map();
-const TARGET_VOLUME = 0.62;
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const shuffle = arr => [...arr].sort(() => Math.random() - .5);
-const validDate = d => /^\d{4}(-\d{2}(-\d{2})?)?$/.test(d || "") && Number(d.slice(0,4)) > 1900;
-const yearOf = d => Number((d || "").slice(0,4));
-
-async function fetchJSON(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Request failed (${res.status})`);
-  return res.json();
-}
-
-function normalize(s) { return (s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
-
-// Reject alternate/compilation editions because their catalog dates can be years
-// later than the album's original release. Check both song and album names.
-function isEditionWeShouldSkip(track) {
-  const trackName = track.trackName || "";
-  const albumName = track.collectionName || "";
-  const albumEditionPatterns = [
-    /\bplatinum\b/i, /\bgold\b/i, /\bdiamond\b/i,
-    /\b(deluxe|super deluxe)(?:\s+(?:edition|version))?\b/i,
-    /\banniversary(?:\s+(?:edition|version|remaster))?\b/i,
-    /\bexpanded(?:\s+(?:edition|version))?\b/i,
-    /\b(reissue|re-issue|reissued)\b/i,
-    /\b(special|limited|collector'?s)\s+(?:album\s+)?edition\b/i,
-    /\blegacy edition\b/i, /\bbonus tracks?\b/i,
-    /\b(greatest hits|best of|essential|the collection|complete collection)\b/i,
-    /\b(box set|soundtrack edition)\b/i
+  const APPLE = "https://itunes.apple.com";
+  const CACHE_KEY = "tracktime_catalog_v1";
+  const HISTORY_KEY = "tracktime_recent_tracks_v1";
+  const CACHE_TTL = 24 * 60 * 60 * 1000;
+  const SEARCH_TERMS = ["pop", "rock", "hip hop", "country", "jazz", "electronic", "alternative", "metal", "soul", "indie"];
+  const EXCLUDED_TERMS = [
+    "deluxe", "remaster", "remastered", "anniversary", "platinum", "gold edition",
+    "diamond", "expanded edition", "reissue", "greatest hits", "best of", "gold",
+    "compilation", "karaoke", "tribute", "soundtrack", "live at", "live:"
   ];
-  const trackEditionPatterns = [
-    /\bremaster(?:ed|ing)?\b/i, /\bre-recorded|re-recording\b/i,
-    /\b(deluxe|anniversary|expanded)\s+(?:edition|version)\b/i
-  ];
-  return albumEditionPatterns.some(pattern => pattern.test(albumName)) ||
-    trackEditionPatterns.some(pattern => pattern.test(trackName));
-}
+  const MAX_RECENT = 35;
+  const $ = (id) => document.getElementById(id);
 
-function albumKey(album) { return normalize(album); }
-
-function conflictsWithYearAlbum(track) {
-  const existingAlbum = albumByYear.get(track.year);
-  return Boolean(existingAlbum && existingAlbum !== albumKey(track.album));
-}
-
-async function findAppleTrack(title, artist) {
-  const term = encodeURIComponent(`${title} ${artist}`);
-  const data = await fetchJSON(`https://itunes.apple.com/search?term=${term}&entity=song&limit=25`);
-  const results = (data.results || []).filter(x => x.previewUrl && x.trackName && x.artistName && !isEditionWeShouldSkip(x));
-  if (!results.length) return null;
-  results.sort((a,b) => {
-    const score = x => (normalize(x.trackName) === normalize(title) ? 4 : 0) + (normalize(x.artistName) === normalize(artist) ? 4 : 0);
-    return score(b)-score(a);
-  });
-  return results[0];
-}
-
-async function getTrack(seed) {
-  const [title, artist] = seed;
-  const apple = await findAppleTrack(title, artist);
-  if (!apple || !apple.collectionName) return null;
-  // Use Apple's catalog release date consistently. MusicBrainz recording-level
-  // first-release dates can point to a different recording/release and distort play.
-  const date = apple.releaseDate ? apple.releaseDate.slice(0,10) : null;
-  if (!validDate(date)) return null;
-  return {
-    title: apple.trackName, artist: apple.artistName, date, year: yearOf(date),
-    preview: apple.previewUrl, artwork: (apple.artworkUrl100 || "").replace("100x100bb", "300x300bb"),
-    album: apple.collectionName || "",
-    source: "Apple catalog release date"
+  const ui = {
+    hearts: $("hearts"), round: $("round-count"), mystery: $("mystery-card"),
+    artwork: $("mystery-artwork"),
+    audioStatus: $("audio-status"), timeline: $("timeline"), viewport: $("timeline-viewport"),
+    hint: $("timeline-hint"), feedback: $("feedback"), audio: $("preview-audio"),
+    loading: $("loading-screen"), loadingMessage: $("loading-message"),
+    gameOver: $("game-over"), finalScore: $("final-score"),
+    restart: $("restart-button"), error: $("error-screen"),
+    errorMessage: $("error-message"), retry: $("retry-button")
   };
-}
 
-function setCover(url) {
-  const img = $("mystery-cover"), placeholder = $("cover-placeholder");
-  if (url) { img.src = url; img.style.display = "block"; placeholder.style.display = "none"; }
-  else { img.removeAttribute("src"); img.style.display = "none"; placeholder.style.display = "grid"; }
-  $("mystery-year").textContent = "";
-  $("drag-card").classList.toggle("has-art", Boolean(url));
-}
-
-function cancelFade() {
-  if (fadeFrame !== null) cancelAnimationFrame(fadeFrame);
-  fadeFrame = null;
-}
-
-function fadeVolume(to, duration = 1200) {
-  cancelFade();
-  const from = audio.volume;
-  const started = performance.now();
-  const step = now => {
-    const progress = Math.min(1, (now - started) / duration);
-    // Smooth ease-in-out curve; prevents abrupt volume changes.
-    const eased = progress * progress * (3 - 2 * progress);
-    audio.volume = Math.max(0, Math.min(1, from + (to - from) * eased));
-    if (progress < 1) fadeFrame = requestAnimationFrame(step);
-    else fadeFrame = null;
+  const state = {
+    catalog: [], timeline: [], current: null, hearts: 3, rounds: 1,
+    score: 0, busy: false, drag: null, insertion: null, autoplayBlocked: false,
+    audioToken: 0, recent: [], started: false
   };
-  fadeFrame = requestAnimationFrame(step);
-}
 
-async function startPreview() {
-  if (!audio.src) return false;
-  cancelFade();
-  fadingOut = false;
-  if (audio.ended || audio.currentTime >= 30) audio.currentTime = 0;
-  audio.volume = 0;
-  try {
-    await audio.play();
-    autoplayBlocked = false;
-    fadeVolume(TARGET_VOLUME, 1400);
-    return true;
-  } catch (e) {
-    audio.volume = TARGET_VOLUME;
-    autoplayBlocked = true;
-    return false;
+  function safeJSON(value, fallback) {
+    try { return JSON.parse(value) ?? fallback; } catch { return fallback; }
   }
-}
 
-function resetPlayer() {
-  cancelFade();
-  audio.pause(); audio.removeAttribute("src"); audio.load(); audio.volume = TARGET_VOLUME;
-  fadingOut = false;
-}
-
-async function loadNext() {
-  current = null;
-  answered = false;
-  $("next-button").disabled = true;
-  $("result").className = "result hidden";
-  $("error-box").classList.add("hidden");
-  $("round-label").textContent = `ROUND ${round}`;
-  $("mystery-title").textContent = "Finding a song…";
-  $("mystery-artist").textContent = "Artist and release date are hidden";
-  setCover(null); resetPlayer();
-
-  const candidates = shuffle(SEEDS.filter(s => !timeline.some(t => t.seed.join("|") === s.join("|"))));
-  for (const seed of candidates) {
-    try {
-      const track = await getTrack(seed);
-      if (track && !conflictsWithYearAlbum(track) &&
-          !timeline.some(t => t.title.toLowerCase() === track.title.toLowerCase() && t.artist.toLowerCase() === track.artist.toLowerCase())) {
-        current = {...track, seed};
-        // Reserve this album/year as soon as the track enters play, even if the guess is wrong.
-        if (!albumByYear.has(track.year)) albumByYear.set(track.year, albumKey(track.album));
-        break;
-      }
-    } catch (e) { console.warn(e); }
+  function readRecent() {
+    const data = safeJSON(localStorage.getItem(HISTORY_KEY), []);
+    return Array.isArray(data) ? data : [];
   }
-  if (!current) {
-    $("mystery-title").textContent = "Couldn't find another playable track";
-    $("mystery-artist").textContent = "Try starting a new game or reload the page.";
-    $("error-box").textContent = "The Apple preview catalog may be temporarily unavailable. Try again in a moment.";
-    $("error-box").classList.remove("hidden");
-    return;
+
+  function saveRecent(trackId) {
+    const list = [String(trackId), ...state.recent.filter(id => String(id) !== String(trackId))].slice(0, MAX_RECENT);
+    state.recent = list;
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch { /* storage is optional */ }
   }
-  $("mystery-title").textContent = "Mystery track";
-  audio.src = current.preview;
-  renderTimeline();
-  // Attempt audible autoplay. If the browser blocks it, the first user gesture
-  // anywhere on the page retries playback without showing a play button.
-  await startPreview();
-}
 
-function addTiltEffect(card) {
-  if (card.dataset.tiltReady) return;
-  card.dataset.tiltReady = "true";
-  card.addEventListener("pointermove", event => {
-    if (event.pointerType !== "mouse" || dragState) return;
-    const rect = card.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = (event.clientY - rect.top) / rect.height;
-    const rotateY = (x - 0.5) * 22;
-    const rotateX = (0.5 - y) * 22;
-    card.style.setProperty("--tilt-x", `${rotateX.toFixed(2)}deg`);
-    card.style.setProperty("--tilt-y", `${rotateY.toFixed(2)}deg`);
-    card.style.setProperty("--shine-x", `${(x * 100).toFixed(1)}%`);
-    card.style.setProperty("--shine-y", `${(y * 100).toFixed(1)}%`);
-    card.classList.add("is-tilting");
-  });
-  card.addEventListener("pointerleave", () => {
-    card.style.setProperty("--tilt-x", "0deg");
-    card.style.setProperty("--tilt-y", "0deg");
-    card.classList.remove("is-tilting");
-  });
-}
+  function normalizeText(value) {
+    return String(value || "").toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  }
 
-function renderTimeline() {
-  const host = $("timeline");
-  host.innerHTML = "";
-  timeline.forEach(track => {
-    const el = document.createElement("div");
-    el.className = "album-card timeline-album";
-    el.innerHTML = `<div class="cd-case"><img alt="Album artwork" src=""><span class="card-glare" aria-hidden="true"></span></div><div class="year-float"></div>`;
-    const image = el.querySelector("img");
-    if (track.artwork) image.src = track.artwork;
-    el.querySelector(".year-float").textContent = track.year;
-    addTiltEffect(el);
-    host.appendChild(el);
-  });
-}
+  function hasExcludedMetadata(album) {
+    const haystack = normalizeText([
+      album.collectionName, album.artistName, album.collectionType,
+      album.copyright, album.primaryGenreName
+    ].join(" "));
+    return EXCLUDED_TERMS.some(term => haystack.includes(normalizeText(term)));
+  }
 
+  function validYear(dateString) {
+    const date = new Date(dateString);
+    if (!Number.isFinite(date.getTime())) return null;
+    const year = date.getUTCFullYear();
+    const currentYear = new Date().getFullYear();
+    if (year < 1950 || year > currentYear) return null;
+    return year;
+  }
 
-// Pointer-based dragging works with mouse, pen, and touch screens.
-let dragState = null;
-const dragCard = $("drag-card");
-addTiltEffect(dragCard);
+  async function fetchJSON(url) {
+    const response = await fetch(url, { mode: "cors", cache: "no-store" });
+    if (!response.ok) throw new Error(`Apple catalogue returned ${response.status}`);
+    return response.json();
+  }
 
-dragCard.addEventListener("pointerdown", event => {
-  if (answered || !current || event.target.closest("button")) return;
-  event.preventDefault();
-  const ghost = document.createElement("div");
-  ghost.className = "drag-ghost";
-  ghost.innerHTML = `<div class="cd-case"><img alt="" src="${current.artwork || ""}"><span class="card-glare"></span></div>`;
-  document.body.appendChild(ghost);
-  dragState = { pointerId: event.pointerId, ghost, position: null, space: null };
-  try { dragCard.setPointerCapture(event.pointerId); } catch (_) {}
-  dragCard.classList.add("is-dragging");
-  moveDragGhost(event);
-  updateDropTarget(event.clientX, event.clientY);
-});
+  async function searchTracks(term) {
+    const url = `${APPLE}/search?term=${encodeURIComponent(term)}&entity=song&limit=50&country=US`;
+    const data = await fetchJSON(url);
+    return (data.results || []).filter(item =>
+      item.wrapperType === "track" &&
+      item.kind === "song" &&
+      item.collectionId &&
+      item.trackId &&
+      item.previewUrl &&
+      item.artworkUrl100
+    );
+  }
 
-function moveDragGhost(event) {
-  if (!dragState) return;
-  dragState.ghost.style.left = `${event.clientX + 16}px`;
-  dragState.ghost.style.top = `${event.clientY + 16}px`;
-}
+  async function lookupAlbums(ids) {
+    const batches = [];
+    for (let i = 0; i < ids.length; i += 80) batches.push(ids.slice(i, i + 80));
+    const results = [];
+    for (const batch of batches) {
+      const url = `${APPLE}/lookup?id=${batch.join(",")}&country=US`;
+      const data = await fetchJSON(url);
+      results.push(...(data.results || []).filter(item => item.wrapperType === "collection"));
+    }
+    return results;
+  }
 
-// FLIP animation: measure the album cards before and after changing the
-// insertion point, then animate their independent `translate` property.
-// This moves the cards without drawing a visible drop target or overriding tilt.
-function animateTimelineShift(host, mutate) {
-  const cards = [...host.querySelectorAll(".timeline-album")];
-  const before = new Map(cards.map(el => [el, el.getBoundingClientRect()]));
-  mutate();
-  for (const [el, oldRect] of before) {
-    const newRect = el.getBoundingClientRect();
-    const dx = oldRect.left - newRect.left;
-    if (Math.abs(dx) < 1) continue;
-    el.style.transition = "none";
-    el.style.translate = `${dx}px 0px`;
-    // Commit the inverse position before animating it back to the new layout.
-    void el.offsetWidth;
-    requestAnimationFrame(() => {
-      el.style.transition = "translate 280ms cubic-bezier(.2,.8,.2,1)";
-      el.style.translate = "0px 0px";
-      el.addEventListener("transitionend", event => {
-        if (event.propertyName === "translate") {
-          el.style.transition = "";
-          el.style.translate = "";
-        }
-      }, { once: true });
+  async function loadCatalog(force = false) {
+    if (!force) {
+      const cached = safeJSON(localStorage.getItem(CACHE_KEY), null);
+      if (cached && cached.savedAt && Date.now() - cached.savedAt < CACHE_TTL &&
+          Array.isArray(cached.catalog) && cached.catalog.length > 15) return cached.catalog;
+    }
+
+    const responses = await Promise.allSettled(SEARCH_TERMS.map(searchTracks));
+    const tracks = responses.flatMap(result => result.status === "fulfilled" ? result.value : []);
+    if (tracks.length < 10) throw new Error("Apple's search service returned too few tracks. Please try again.");
+
+    const trackGroups = new Map();
+    for (const track of tracks) {
+      const key = String(track.collectionId);
+      if (!trackGroups.has(key)) trackGroups.set(key, []);
+      const group = trackGroups.get(key);
+      if (!group.some(item => String(item.trackId) === String(track.trackId))) group.push(track);
+    }
+
+    const ids = [...trackGroups.keys()];
+    const albums = await lookupAlbums(ids);
+    const albumById = new Map(albums.map(album => [String(album.collectionId), album]));
+    const catalog = [];
+
+    for (const [collectionId, albumTracks] of trackGroups) {
+      const album = albumById.get(collectionId);
+      if (!album || hasExcludedMetadata(album)) continue;
+      if (album.collectionType && !/album/i.test(album.collectionType)) continue;
+      const year = validYear(album.releaseDate);
+      if (!year || !album.collectionName || !album.artistName) continue;
+
+      const cleanTracks = albumTracks.filter(track => {
+        const trackHaystack = normalizeText(`${track.trackName} ${track.collectionName}`);
+        return track.previewUrl && !trackHaystack.includes("karaoke") &&
+          !trackHaystack.includes("tribute") && !trackHaystack.includes("remix");
+      });
+      if (!cleanTracks.length) continue;
+
+      const art = album.artworkUrl100 || albumTracks[0].artworkUrl100;
+      const artwork = art ? art.replace(/100x100bb\./, "600x600bb.") : "";
+      if (!artwork) continue;
+
+      catalog.push({
+        collectionId: String(album.collectionId),
+        album: album.collectionName,
+        artist: album.artistName,
+        year,
+        artwork,
+        genre: album.primaryGenreName || albumTracks[0].primaryGenreName || "Other",
+        tracks: cleanTracks.map(track => ({
+          id: String(track.trackId),
+          title: track.trackName,
+          artist: track.artistName || album.artistName,
+          preview: track.previewUrl
+        }))
+      });
+    }
+
+    if (catalog.length < 12) {
+      throw new Error("Not enough verified albums were found. Please try again later.");
+    }
+
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), catalog })); } catch { /* cache is optional */ }
+    return catalog;
+  }
+
+  function chooseTrack(album) {
+    const recentSet = new Set(state.recent.map(String));
+    const fresh = album.tracks.filter(track => !recentSet.has(String(track.id)));
+    const choices = fresh.length ? fresh : album.tracks;
+    return choices[Math.floor(Math.random() * choices.length)];
+  }
+
+  function pickAlbum(excludeRecent = true) {
+    const usedYears = new Map(state.timeline.map(item => [item.year, item.collectionId]));
+    const recentSet = new Set(state.recent.map(String));
+    let candidates = state.catalog.filter(album => {
+      const occupiedBy = usedYears.get(album.year);
+      return !occupiedBy || occupiedBy === album.collectionId;
+    });
+    if (excludeRecent) {
+      const freshCandidates = candidates.filter(album => album.tracks.some(track => !recentSet.has(track.id)));
+      if (freshCandidates.length > 5) candidates = freshCandidates;
+    }
+    if (!candidates.length) return null;
+
+    // Prefer decade and artist variety without making the pool deterministic.
+    const lastArtist = state.timeline.length ? state.timeline[state.timeline.length - 1].artist : "";
+    const artistVariety = candidates.filter(album => normalizeText(album.artist) !== normalizeText(lastArtist));
+    if (artistVariety.length > 4) candidates = artistVariety;
+    const decades = new Map();
+    for (const album of candidates) decades.set(Math.floor(album.year / 10), (decades.get(Math.floor(album.year / 10)) || 0) + 1);
+    const decadeKeys = [...decades.keys()];
+    const chosenDecade = decadeKeys[Math.floor(Math.random() * decadeKeys.length)];
+    const decadePool = candidates.filter(album => Math.floor(album.year / 10) === chosenDecade);
+    const album = (decadePool.length ? decadePool : candidates)[Math.floor(Math.random() * (decadePool.length ? decadePool : candidates).length)];
+    const track = chooseTrack(album);
+    return { ...album, track };
+  }
+
+  function setLoading(show, message = "Building your music timeline…") {
+    ui.loadingMessage.textContent = message;
+    ui.loading.classList.toggle("hidden", !show);
+  }
+
+  function renderHearts() {
+    [...ui.hearts.children].forEach((heart, index) => heart.classList.toggle("lost", index >= state.hearts));
+    ui.hearts.setAttribute("aria-label", `${state.hearts} hearts remaining`);
+  }
+
+  function renderTimeline() {
+    ui.timeline.replaceChildren();
+    state.timeline.forEach((album, index) => {
+      const slot = document.createElement("div");
+      slot.className = "album-slot";
+      slot.dataset.index = String(index);
+      const img = document.createElement("img");
+      img.src = album.artwork;
+      img.alt = `${album.album} album artwork`;
+      img.loading = "lazy";
+      img.draggable = false;
+      img.onerror = () => { img.src = fallbackArtwork(); };
+      const year = document.createElement("div");
+      year.className = "album-year";
+      year.textContent = album.year;
+      slot.append(img, year);
+      ui.timeline.append(slot);
     });
   }
-}
 
-function updateDropTarget(x, y) {
-  if (!dragState) return;
-  const host = $("timeline");
-  const rect = host.getBoundingClientRect();
-  const inside = y >= rect.top - 28 && y <= rect.bottom + 28 && x >= rect.left && x <= rect.right;
+  function fallbackArtwork() {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="100%" height="100%" fill="#292b32"/><circle cx="300" cy="300" r="120" fill="none" stroke="#c8f36a" stroke-width="12"/><circle cx="300" cy="300" r="22" fill="#c8f36a"/></svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  }
 
-  if (!inside) {
-    dragState.position = null;
-    if (dragState.space) {
-      const oldSpace = dragState.space;
-      animateTimelineShift(host, () => oldSpace.remove());
-      dragState.space = null;
+  function setMystery(album) {
+    state.current = album;
+    ui.artwork.src = album.artwork;
+    ui.artwork.onerror = () => { ui.artwork.src = fallbackArtwork(); };
+    ui.hint.textContent = "Drag the cover to its place";
+    ui.feedback.textContent = "";
+    ui.feedback.className = "feedback";
+    startPreview(album.track.preview);
+  }
+
+  function stopPreview() {
+    state.audioToken++;
+    ui.audio.pause();
+    ui.audio.removeAttribute("src");
+    ui.audio.load();
+  }
+
+  async function startPreview(url) {
+    stopPreview();
+    const token = state.audioToken;
+    ui.audioStatus.textContent = "Loading preview";
+    ui.audioStatus.classList.remove("muted");
+    if (!url) {
+      ui.audioStatus.textContent = "Preview unavailable";
+      ui.audioStatus.classList.add("muted");
+      return;
     }
-    return;
-  }
-
-  const albums = [...host.querySelectorAll(".timeline-album")];
-  let position = albums.findIndex(el => {
-    const r = el.getBoundingClientRect();
-    return x < r.left + r.width / 2;
-  });
-  if (position < 0) position = albums.length;
-  dragState.position = position;
-
-  if (!dragState.space) {
-    // The gap is intentionally blank and has no text, border, or icon.
-    const space = document.createElement("div");
-    space.className = "drop-space";
-    space.setAttribute("aria-hidden", "true");
-    dragState.space = space;
-    const nextAlbum = albums[position] || null;
-    animateTimelineShift(host, () => host.insertBefore(space, nextAlbum));
-    return;
-  }
-
-  const space = dragState.space;
-  const nextAlbum = albums[position] || null;
-  const alreadyAtPosition = nextAlbum ? space.nextElementSibling === nextAlbum : host.lastElementChild === space;
-  if (!alreadyAtPosition) {
-    animateTimelineShift(host, () => host.insertBefore(space, nextAlbum));
-  }
-}
-
-
-window.addEventListener("pointermove", event => {
-  if (!dragState || event.pointerId !== dragState.pointerId) return;
-  moveDragGhost(event);
-  updateDropTarget(event.clientX, event.clientY);
-});
-
-function finishDrag(event) {
-  if (!dragState || (event && event.pointerId !== dragState.pointerId)) return;
-  const position = dragState.position;
-  const space = dragState.space;
-  dragState.ghost.remove();
-  if (space) space.remove();
-  dragState = null;
-  dragCard.classList.remove("is-dragging");
-  if (position !== null && position !== undefined) placeAt(position);
-}
-window.addEventListener("pointerup", finishDrag);
-window.addEventListener("pointercancel", finishDrag);
-
-
-
-function updateHearts() {
-  $("hearts").innerHTML = [0,1,2].map(i => `<span class="${i < hearts ? "alive" : "lost"}">♥</span>`).join(" ");
-  $("hearts").setAttribute("aria-label", `${hearts} hearts remaining`);
-}
-
-function placeAt(position) {
-  if (answered || !current) return;
-  answered = true;
-  const left = timeline[position-1], right = timeline[position];
-  const correct = (!left || left.year <= current.year) && (!right || current.year <= right.year);
-  if (correct) {
-    score++;
-    timeline.splice(position, 0, current);
-  } else {
-    hearts = Math.max(0, hearts - 1);
-    updateHearts();
-  }
-  $("score").textContent = score;
-  $("mystery-title").textContent = current.title;
-  $("mystery-artist").textContent = `${current.artist} · ${current.album}`;
-  setCover(current.artwork);
-  $("mystery-year").textContent = current.year;
-  const result = $("result");
-  result.className = `result ${correct ? "" : "wrong"}`;
-  const dateText = current.date.length === 4 ? current.date : current.date;
-  result.innerHTML = `<strong>${correct ? "Correct! Nice placement." : "Not quite!"}</strong><br>${escapeHTML(current.title)} by ${escapeHTML(current.artist)} has an Apple catalog release date of <strong>${escapeHTML(dateText)}</strong>.<br><span style="color:#aab6c9;font-size:11px">Date source: ${escapeHTML(current.source)}. ${correct ? "Your timeline grows!" : `You lost a heart. ${hearts} remaining.`}</span>`;
-  if (correct) renderTimeline();
-  if (hearts === 0) {
-    result.classList.add("game-over");
-    result.innerHTML += `<br><strong>Game over!</strong> You scored ${score} correct placements.`;
-    $("next-button").disabled = false;
-    $("next-button").innerHTML = `Play again <span>↻</span>`;
-    $("next-button").dataset.action = "restart";
-  } else {
-    $("next-button").disabled = false;
-    $("next-button").innerHTML = `Next track <span>→</span>`;
-    $("next-button").dataset.action = "next";
-  }
-  round++;
-}
-
-function escapeHTML(s) {
-  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-}
-
-document.addEventListener("pointerdown", () => {
-  if (autoplayBlocked && current && !answered) startPreview();
-}, true);
-document.addEventListener("keydown", () => {
-  if (autoplayBlocked && current && !answered) startPreview();
-}, true);
-audio.addEventListener("timeupdate", () => {
-  if (audio.currentTime >= 28.5 && !fadingOut) {
-    fadingOut = true;
-    fadeVolume(0, 1500);
-  }
-  if (audio.currentTime >= 30) audio.pause();
-});
-audio.addEventListener("ended", () => {
-  cancelFade(); audio.volume = TARGET_VOLUME; fadingOut = false;
-});
-async function loadStartingTrack() {
-  const candidates = shuffle(SEEDS);
-  for (const seed of candidates) {
+    ui.audio.src = url;
+    ui.audio.load();
     try {
-      const track = await getTrack(seed);
-      if (track) {
-        const starter = {...track, seed};
-        timeline = [starter];
-        albumByYear.set(track.year, albumKey(track.album));
-        renderTimeline();
-        return true;
+      await ui.audio.play();
+      if (token === state.audioToken) {
+        state.autoplayBlocked = false;
+        ui.audioStatus.textContent = "Now playing preview";
       }
-    } catch (e) { console.warn(e); }
+    } catch {
+      if (token === state.audioToken) {
+        state.autoplayBlocked = true;
+        ui.audioStatus.textContent = "Preview ready — tap or drag to listen";
+        ui.audioStatus.classList.add("muted");
+      }
+    }
   }
-  $("error-box").textContent = "Couldn't load a starting song from Apple's catalog. Please try a new game in a moment.";
-  $("error-box").classList.remove("hidden");
-  return false;
-}
 
-async function startNewGame() {
-  timeline = []; albumByYear = new Map(); score = 0; hearts = 3; round = 1; current = null;
-  answered = false; autoplayBlocked = false;
-  setCover(null); resetPlayer();
-  $("score").textContent = "0"; updateHearts();
-  $("next-button").disabled = true;
-  $("next-button").dataset.action = "next";
-  $("next-button").innerHTML = `Next track <span>→</span>`;
-  $("result").className = "result hidden";
-  $("error-box").classList.add("hidden");
-  $("round-label").textContent = "ROUND 1";
-  renderTimeline();
-  await loadStartingTrack();
-  await loadNext();
-}
+  async function resumeAudio() {
+    if (!state.autoplayBlocked || !state.current) return;
+    try {
+      await ui.audio.play();
+      state.autoplayBlocked = false;
+      ui.audioStatus.textContent = "Now playing preview";
+      ui.audioStatus.classList.remove("muted");
+    } catch {
+      ui.audioStatus.textContent = "Preview could not be played";
+      ui.audioStatus.classList.add("muted");
+    }
+  }
 
-$("next-button").addEventListener("click", () => {
-  if ($("next-button").dataset.action === "restart") startNewGame();
-  else loadNext();
-});
-$("new-game").addEventListener("click", startNewGame);
+  function getInsertionIndex(clientX) {
+    const slots = [...ui.timeline.querySelectorAll(".album-slot")];
+    if (!slots.length) return 0;
+    for (let i = 0; i < slots.length; i++) {
+      const rect = slots[i].getBoundingClientRect();
+      if (clientX < rect.left + rect.width / 2) return i;
+    }
+    return slots.length;
+  }
 
-updateHearts();
-startNewGame();
+  function updatePush(index) {
+    state.insertion = index;
+    const slots = [...ui.timeline.querySelectorAll(".album-slot")];
+    const mid = slots.length / 2;
+    slots.forEach((slot, i) => {
+      slot.classList.toggle("push-left", i < index && i < mid);
+      slot.classList.toggle("push-right", i >= index && i >= mid);
+    });
+    // Push all albums away from the insertion point, including on short timelines.
+    slots.forEach((slot, i) => {
+      if (i < index) slot.classList.add("push-left");
+      else slot.classList.add("push-right");
+    });
+  }
+
+  function clearPush() {
+    ui.timeline.querySelectorAll(".album-slot").forEach(slot => {
+      slot.classList.remove("push-left", "push-right");
+    });
+    state.insertion = null;
+  }
+
+  function pointerDown(event) {
+    if (state.busy || !state.current || event.button > 0) return;
+    resumeAudio();
+    event.preventDefault();
+    const rect = ui.mystery.getBoundingClientRect();
+    state.drag = {
+      pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+      left: rect.left, top: rect.top, moved: false
+    };
+    ui.mystery.setPointerCapture(event.pointerId);
+    ui.mystery.classList.add("dragging");
+  }
+
+  function pointerMove(event) {
+    if (!state.drag || event.pointerId !== state.drag.pointerId) return;
+    const dx = event.clientX - state.drag.startX;
+    const dy = event.clientY - state.drag.startY;
+    if (Math.abs(dx) + Math.abs(dy) > 5) state.drag.moved = true;
+    ui.mystery.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(1.025)`;
+    const index = getInsertionIndex(event.clientX);
+    updatePush(index);
+    if (state.drag.moved) ui.hint.textContent = "Release to place your guess";
+  }
+
+  function pointerUp(event) {
+    if (!state.drag || event.pointerId !== state.drag.pointerId) return;
+    const moved = state.drag.moved;
+    const index = state.insertion ?? getInsertionIndex(event.clientX);
+    state.drag = null;
+    ui.mystery.releasePointerCapture?.(event.pointerId);
+    ui.mystery.classList.remove("dragging");
+    ui.mystery.style.transform = "";
+    clearPush();
+    if (moved) submitGuess(index);
+    else ui.hint.textContent = "Drag the cover to its place";
+  }
+
+  function pointerCancel() {
+    if (!state.drag) return;
+    state.drag = null;
+    ui.mystery.classList.remove("dragging");
+    ui.mystery.style.transform = "";
+    clearPush();
+    ui.hint.textContent = "Drag the cover to its place";
+  }
+
+  function correctInsertion(index, album) {
+    const before = state.timeline[index - 1];
+    const after = state.timeline[index];
+    return (!before || before.year <= album.year) && (!after || album.year <= after.year);
+  }
+
+  function submitGuess(index) {
+    if (state.busy || !state.current) return;
+    state.busy = true;
+    stopPreview();
+    const album = state.current;
+    const correct = correctInsertion(index, album);
+    saveRecent(album.track.id);
+
+    if (correct) {
+      state.timeline.splice(index, 0, album);
+      state.score++;
+      ui.feedback.textContent = `Correct! ${album.album} — ${album.year}`;
+      ui.feedback.className = "feedback";
+      renderTimeline();
+      state.rounds++;
+      ui.round.textContent = String(state.rounds);
+      if (state.hearts > 0) setTimeout(() => nextRound(), 850);
+      return;
+    }
+
+    state.hearts--;
+    renderHearts();
+    ui.feedback.textContent = `Not quite — ${album.album} was released in ${album.year}.`;
+    ui.feedback.className = "feedback wrong";
+    if (state.hearts <= 0) {
+      setTimeout(endGame, 1100);
+    } else {
+      state.rounds++;
+      ui.round.textContent = String(state.rounds);
+      setTimeout(() => nextRound(), 1100);
+    }
+  }
+
+  function nextRound() {
+    if (state.hearts <= 0) return endGame();
+    const next = pickAlbum(true);
+    if (!next) {
+      ui.feedback.textContent = "You've explored all available albums. Great run!";
+      setTimeout(endGame, 900);
+      return;
+    }
+    state.busy = false;
+    setMystery(next);
+  }
+
+  function endGame() {
+    state.busy = true;
+    stopPreview();
+    ui.finalScore.textContent = `You placed ${state.score} ${state.score === 1 ? "album" : "albums"} and reached round ${state.rounds}.`;
+    ui.gameOver.classList.remove("hidden");
+  }
+
+  async function startGame() {
+    state.busy = true;
+    state.drag = null;
+    state.timeline = [];
+    state.current = null;
+    state.hearts = 3;
+    state.rounds = 1;
+    state.score = 0;
+    state.recent = readRecent();
+    ui.round.textContent = "1";
+    renderHearts();
+    ui.gameOver.classList.add("hidden");
+    ui.error.classList.add("hidden");
+    setLoading(true);
+    stopPreview();
+
+    try {
+      state.catalog = await loadCatalog();
+      const starter = pickAlbum(false);
+      if (!starter) throw new Error("No suitable starting album could be selected.");
+      state.timeline = [{ ...starter, track: starter.track }];
+      renderTimeline();
+      const mystery = pickAlbum(true);
+      if (!mystery) throw new Error("Not enough different album years are available.");
+      setMystery(mystery);
+      state.busy = false;
+      state.started = true;
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+      ui.errorMessage.textContent = error.message || "Apple's music catalogue is temporarily unavailable.";
+      ui.error.classList.remove("hidden");
+    }
+  }
+
+  function onAudioEnded() {
+    if (state.current) {
+      ui.audioStatus.textContent = "Preview finished";
+      ui.audioStatus.classList.add("muted");
+    }
+  }
+
+  function init() {
+    ui.mystery.addEventListener("pointerdown", pointerDown);
+    ui.mystery.addEventListener("pointermove", pointerMove);
+    ui.mystery.addEventListener("pointerup", pointerUp);
+    ui.mystery.addEventListener("pointercancel", pointerCancel);
+    ui.mystery.addEventListener("lostpointercapture", pointerCancel);
+    ui.mystery.addEventListener("keydown", event => {
+      if ((event.key === "Enter" || event.key === " ") && state.current && !state.busy) {
+        event.preventDefault();
+        resumeAudio();
+        const guessed = window.prompt("Enter the album's release year:");
+        if (guessed !== null && /^\d{4}$/.test(guessed.trim())) {
+          const year = Number(guessed);
+          const index = state.timeline.findIndex(item => item.year > year);
+          submitGuess(index < 0 ? state.timeline.length : index);
+        }
+      }
+    });
+    ui.audio.addEventListener("ended", onAudioEnded);
+    ui.audio.addEventListener("error", () => {
+      ui.audioStatus.textContent = "Preview unavailable";
+      ui.audioStatus.classList.add("muted");
+    });
+    ui.restart.addEventListener("click", () => startGame());
+    ui.retry.addEventListener("click", () => startGame(true));
+    // Browsers may block autoplay. Any first interaction is a playback retry.
+    document.addEventListener("pointerdown", resumeAudio, { passive: true });
+    document.addEventListener("keydown", resumeAudio);
+    startGame();
+  }
+
+  document.addEventListener("DOMContentLoaded", init, { once: true });
+})();

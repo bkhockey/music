@@ -24,25 +24,23 @@ Then visit http://localhost:8000.
 ## Data flow
 
 - Apple iTunes Search API is used to find a playable preview URL and artwork.
-- MusicBrainz recording search is used to retrieve `first-release-date` when available.
 - Apple results from Platinum, Gold, Diamond, Deluxe, Remastered, Anniversary, Expanded, Reissue, Special/Limited/Collector’s Edition, Legacy Edition, Greatest Hits/Best Of, box sets and bonus-track releases are filtered out. Remaster/re-recording markers in track titles are filtered too. Tracks without an album title are skipped.
-- If MusicBrainz has no matching date or is unavailable, the prototype falls back to Apple's catalog `releaseDate` from a non-excluded edition.
+- Apple's catalog `releaseDate` is the sole source of the year used in gameplay. MusicBrainz is no longer queried, avoiding mismatches between recording-level first-release dates and the Apple album/preview entry.
 
 ## Important limitations
 
 - This is a prototype with a small hand-picked seed list, not a complete music catalog.
 - Apple preview availability varies by country and track. Tracks without a preview are skipped.
-- MusicBrainz dates may be missing or incomplete. A recording's first-release date is not always the original commercial single release date. Edition filtering relies on Apple catalog naming, so an oddly named special edition can still slip through, and an ordinary album whose title contains one of the edition markers can be excluded.
+- Apple catalog dates are consistent with the selected Apple entry, but may still represent a later catalog edition rather than the original commercial release. Edition filtering relies on Apple catalog naming, so an oddly named special edition can still slip through, and an ordinary album whose title contains one of the edition markers can be excluded.
 - The prototype compares by year, because many songs have incomplete month/day data. Songs from the same year can therefore be placed in either order.
 - Players start with three hearts. An incorrect placement costs one heart; the game ends at zero hearts. During a game, only one distinct album is allowed for each release year; additional songs from that same album are allowed. The year is reserved when a track is presented, even if the guess is incorrect.
 - Previews fade in over 1.4 seconds and fade out during the final 1.5 seconds of the 30-second clip. Browsers generally block audible autoplay until the player clicks once; after that, the next previews attempt to start automatically.
-- The MusicBrainz API asks clients not to exceed one request per second. This prototype waits between MusicBrainz lookups.
 - Browser access to third-party APIs depends on their current CORS policies, network availability and service terms. If a provider blocks browser requests, a small proxy/backend will be needed.
-- Apple preview URLs and artwork are supplied by Apple. Review Apple's terms before commercial use. MusicBrainz data is available under its applicable database/content licenses; retain attribution and review the terms for your use case.
+- Apple preview URLs and artwork are supplied by Apple. Review Apple's terms before commercial use. 
 
 ## Next improvements
 
-- Add a server-side cache to avoid repeated MusicBrainz lookups and respect rate limits.
+- Build a curated dataset with verified original release dates and album editions.
 - Expand the seed catalog and pre-validate song/artist matches.
 - Add genre, decade, difficulty and multiplayer modes.
 - Use a curated dataset with verified original release dates.

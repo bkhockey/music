@@ -75,40 +75,19 @@ async function findAppleTrack(title, artist) {
   return results[0];
 }
 
-async function findMusicBrainzDate(title, artist) {
-  const cleanTitle = title.replace(/"/g, "");
-  const cleanArtist = artist.replace(/"/g, "");
-  const query = `recording:"${cleanTitle}" AND artist:"${cleanArtist}"`;
-  const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=5`;
-  try {
-    const data = await fetchJSON(url);
-    const recordings = data.recordings || [];
-    const best = recordings
-      .filter(r => r["first-release-date"] && validDate(r["first-release-date"]))
-      .sort((a,b) => {
-        const exactA = normalize(a.title) === normalize(title) ? 1 : 0;
-        const exactB = normalize(b.title) === normalize(title) ? 1 : 0;
-        return exactB - exactA;
-      })[0];
-    if (best) return {date: best["first-release-date"], mbid: best.id};
-  } catch (e) {
-    console.warn("MusicBrainz lookup unavailable; falling back to Apple release date.", e);
-  }
-  return null;
-}
-
 async function getTrack(seed) {
   const [title, artist] = seed;
   const apple = await findAppleTrack(title, artist);
   if (!apple || !apple.collectionName) return null;
-  const mb = await findMusicBrainzDate(title, artist);
-  const date = mb?.date || (apple.releaseDate ? apple.releaseDate.slice(0,10) : null);
+  // Use Apple's catalog release date consistently. MusicBrainz recording-level
+  // first-release dates can point to a different recording/release and distort play.
+  const date = apple.releaseDate ? apple.releaseDate.slice(0,10) : null;
   if (!validDate(date)) return null;
   return {
     title: apple.trackName, artist: apple.artistName, date, year: yearOf(date),
     preview: apple.previewUrl, artwork: (apple.artworkUrl100 || "").replace("100x100bb", "300x300bb"),
-    album: apple.collectionName || "", mbid: mb?.mbid || null,
-    source: mb ? "MusicBrainz first-release date" : "Apple catalog release date"
+    album: apple.collectionName || "",
+    source: "Apple catalog release date"
   };
 }
 
@@ -191,12 +170,11 @@ async function loadNext() {
         break;
       }
     } catch (e) { console.warn(e); }
-    await sleep(1100); // Respect MusicBrainz's one-request-per-second guideline.
   }
   if (!current) {
     $("mystery-title").textContent = "Couldn't find another playable track";
     $("mystery-artist").textContent = "Try starting a new game or reload the page.";
-    $("error-box").textContent = "The preview catalog or MusicBrainz may be temporarily unavailable. Try again in a moment.";
+    $("error-box").textContent = "The Apple preview catalog may be temporarily unavailable. Try again in a moment.";
     $("error-box").classList.remove("hidden");
     $("placement-controls").classList.add("hidden");
     return;
@@ -272,7 +250,7 @@ function placeAt(position) {
   const result = $("result");
   result.className = `result ${correct ? "" : "wrong"}`;
   const dateText = current.date.length === 4 ? current.date : current.date;
-  result.innerHTML = `<strong>${correct ? "Correct! Nice placement." : "Not quite!"}</strong><br>${escapeHTML(current.title)} by ${escapeHTML(current.artist)} was first released on <strong>${escapeHTML(dateText)}</strong>.<br><span style="color:#aab6c9;font-size:11px">Date source: ${escapeHTML(current.source)}. ${correct ? "Your timeline grows!" : `You lost a heart. ${hearts} remaining.`}</span>`;
+  result.innerHTML = `<strong>${correct ? "Correct! Nice placement." : "Not quite!"}</strong><br>${escapeHTML(current.title)} by ${escapeHTML(current.artist)} has an Apple catalog release date of <strong>${escapeHTML(dateText)}</strong>.<br><span style="color:#aab6c9;font-size:11px">Date source: ${escapeHTML(current.source)}. ${correct ? "Your timeline grows!" : `You lost a heart. ${hearts} remaining.`}</span>`;
   $("placement-controls").classList.add("hidden");
   if (correct) renderTimeline();
   if (hearts === 0) {

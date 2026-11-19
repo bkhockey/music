@@ -25,16 +25,16 @@ Then visit http://localhost:8000.
 
 - Apple iTunes Search API is used to find a playable preview URL and artwork.
 - MusicBrainz recording search is used to retrieve `first-release-date` when available.
-- Apple search results marked Deluxe, Remastered, Anniversary, Expanded, Reissue, Special Edition, Legacy Edition, Super Deluxe or Bonus Tracks are excluded.
+- Apple results from Platinum, Gold, Diamond, Deluxe, Remastered, Anniversary, Expanded, Reissue, Special/Limited/Collector’s Edition, Legacy Edition, Greatest Hits/Best Of, box sets and bonus-track releases are filtered out. Remaster/re-recording markers in track titles are filtered too. Tracks without an album title are skipped.
 - If MusicBrainz has no matching date or is unavailable, the prototype falls back to Apple's catalog `releaseDate` from a non-excluded edition.
 
 ## Important limitations
 
 - This is a prototype with a small hand-picked seed list, not a complete music catalog.
 - Apple preview availability varies by country and track. Tracks without a preview are skipped.
-- MusicBrainz dates may be missing or incomplete. A recording's first-release date is not always the original commercial single release date.
+- MusicBrainz dates may be missing or incomplete. A recording's first-release date is not always the original commercial single release date. Edition filtering relies on Apple catalog naming, so an oddly named special edition can still slip through, and an ordinary album whose title contains one of the edition markers can be excluded.
 - The prototype compares by year, because many songs have incomplete month/day data. Songs from the same year can therefore be placed in either order.
-- Players start with three hearts. An incorrect placement costs one heart; the game ends at zero hearts.
+- Players start with three hearts. An incorrect placement costs one heart; the game ends at zero hearts. During a game, only one distinct album is allowed for each release year; additional songs from that same album are allowed. The year is reserved when a track is presented, even if the guess is incorrect.
 - Previews fade in over 1.4 seconds and fade out during the final 1.5 seconds of the 30-second clip. Browsers generally block audible autoplay until the player clicks once; after that, the next previews attempt to start automatically.
 - The MusicBrainz API asks clients not to exceed one request per second. This prototype waits between MusicBrainz lookups.
 - Browser access to third-party APIs depends on their current CORS policies, network availability and service terms. If a provider blocks browser requests, a small proxy/backend will be needed.

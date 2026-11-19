@@ -16,6 +16,8 @@ const SEEDS = [
 const $ = id => document.getElementById(id);
 const audio = $("audio");
 let timeline = [], current = null, round = 1, score = 0, hearts = 3, answered = false, audioUnlocked = false, fadeFrame = null, fadingOut = false;
+// A game may use several songs from one album, but never different albums for the same year.
+let albumByYear = new Map();
 const TARGET_VOLUME = 0.62;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const shuffle = arr => [...arr].sort(() => Math.random() - .5);
@@ -30,11 +32,35 @@ async function fetchJSON(url) {
 
 function normalize(s) { return (s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
 
-// Avoid edition-specific dates: deluxe/remastered/reissue albums are not valid
-// fallbacks for a song's original release year.
+// Reject alternate/compilation editions because their catalog dates can be years
+// later than the album's original release. Check both song and album names.
 function isEditionWeShouldSkip(track) {
-  const text = `${track.trackName || ""} ${track.collectionName || ""}`;
-  return /\b(deluxe|remaster(?:ed)?|anniversary|expanded|reissue|re-issue|special edition|legacy edition|super deluxe|bonus tracks)\b/i.test(text);
+  const trackName = track.trackName || "";
+  const albumName = track.collectionName || "";
+  const albumEditionPatterns = [
+    /\bplatinum\b/i, /\bgold\b/i, /\bdiamond\b/i,
+    /\b(deluxe|super deluxe)(?:\s+(?:edition|version))?\b/i,
+    /\banniversary(?:\s+(?:edition|version|remaster))?\b/i,
+    /\bexpanded(?:\s+(?:edition|version))?\b/i,
+    /\b(reissue|re-issue|reissued)\b/i,
+    /\b(special|limited|collector'?s)\s+(?:album\s+)?edition\b/i,
+    /\blegacy edition\b/i, /\bbonus tracks?\b/i,
+    /\b(greatest hits|best of|essential|the collection|complete collection)\b/i,
+    /\b(box set|soundtrack edition)\b/i
+  ];
+  const trackEditionPatterns = [
+    /\bremaster(?:ed|ing)?\b/i, /\bre-recorded|re-recording\b/i,
+    /\b(deluxe|anniversary|expanded)\s+(?:edition|version)\b/i
+  ];
+  return albumEditionPatterns.some(pattern => pattern.test(albumName)) ||
+    trackEditionPatterns.some(pattern => pattern.test(trackName));
+}
+
+function albumKey(album) { return normalize(album); }
+
+function conflictsWithYearAlbum(track) {
+  const existingAlbum = albumByYear.get(track.year);
+  return Boolean(existingAlbum && existingAlbum !== albumKey(track.album));
 }
 
 async function findAppleTrack(title, artist) {
@@ -74,7 +100,7 @@ async function findMusicBrainzDate(title, artist) {
 async function getTrack(seed) {
   const [title, artist] = seed;
   const apple = await findAppleTrack(title, artist);
-  if (!apple) return null;
+  if (!apple || !apple.collectionName) return null;
   const mb = await findMusicBrainzDate(title, artist);
   const date = mb?.date || (apple.releaseDate ? apple.releaseDate.slice(0,10) : null);
   if (!validDate(date)) return null;
@@ -154,11 +180,14 @@ async function loadNext() {
   setCover(null); resetPlayer();
 
   const candidates = shuffle(SEEDS.filter(s => !timeline.some(t => t.seed.join("|") === s.join("|"))));
-  for (const seed of candidates.slice(0, 12)) {
+  for (const seed of candidates) {
     try {
       const track = await getTrack(seed);
-      if (track && !timeline.some(t => t.title.toLowerCase() === track.title.toLowerCase() && t.artist.toLowerCase() === track.artist.toLowerCase())) {
+      if (track && !conflictsWithYearAlbum(track) &&
+          !timeline.some(t => t.title.toLowerCase() === track.title.toLowerCase() && t.artist.toLowerCase() === track.artist.toLowerCase())) {
         current = {...track, seed};
+        // Reserve this album/year as soon as the track enters play, even if the guess is wrong.
+        if (!albumByYear.has(track.year)) albumByYear.set(track.year, albumKey(track.album));
         break;
       }
     } catch (e) { console.warn(e); }
@@ -293,7 +322,7 @@ audio.addEventListener("ended", () => {
 audio.addEventListener("pause", () => { $("play-button").textContent = "▶"; });
 $("next-button").addEventListener("click", () => {
   if ($("next-button").dataset.action === "restart") {
-    timeline = []; score = 0; hearts = 3; round = 1; current = null;
+    timeline = []; albumByYear = new Map(); score = 0; hearts = 3; round = 1; current = null;
     $("score").textContent = "0"; updateHearts();
     $("next-button").dataset.action = "next";
     $("next-button").innerHTML = `Next track <span>→</span>`;
@@ -301,7 +330,7 @@ $("next-button").addEventListener("click", () => {
   } else loadNext();
 });
 $("new-game").addEventListener("click", () => {
-  timeline = []; score = 0; hearts = 3; round = 1; current = null;
+  timeline = []; albumByYear = new Map(); score = 0; hearts = 3; round = 1; current = null;
   $("score").textContent = "0"; updateHearts();
   $("next-button").dataset.action = "next";
   $("next-button").innerHTML = `Next track <span>→</span>`;

@@ -151,7 +151,6 @@ async function loadNext() {
   answered = false;
   $("next-button").disabled = true;
   $("result").className = "result hidden";
-  $("placement-controls").classList.remove("hidden");
   $("error-box").classList.add("hidden");
   $("round-label").textContent = `ROUND ${round}`;
   $("mystery-title").textContent = "Finding a song…";
@@ -176,7 +175,6 @@ async function loadNext() {
     $("mystery-artist").textContent = "Try starting a new game or reload the page.";
     $("error-box").textContent = "The Apple preview catalog may be temporarily unavailable. Try again in a moment.";
     $("error-box").classList.remove("hidden");
-    $("placement-controls").classList.add("hidden");
     return;
   }
   $("mystery-title").textContent = "Mystery track";
@@ -184,7 +182,6 @@ async function loadNext() {
   audio.src = current.preview;
   $("play-button").disabled = false;
   renderTimeline();
-  updatePlacementButtons();
   // Browsers may block audible autoplay until the player has received a user gesture.
   // Once unlocked, previews start automatically on every subsequent round.
   await startPreview();
@@ -193,11 +190,31 @@ async function loadNext() {
 function renderTimeline() {
   const host = $("timeline");
   host.innerHTML = "";
+
+  const makeDropSlot = position => {
+    const slot = document.createElement("div");
+    slot.className = "drop-slot";
+    slot.dataset.position = position;
+    slot.setAttribute("aria-label", `Place mystery song at position ${position + 1}`);
+    slot.setAttribute("role", "button");
+    slot.tabIndex = 0;
+    slot.innerHTML = `<span class="drop-plus">+</span><span class="drop-label">Drop here</span>`;
+    slot.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        placeAt(position);
+      }
+    });
+    host.appendChild(slot);
+  };
+
   if (!timeline.length) {
-    host.innerHTML = `<div class="song-tile" style="width:100%;align-items:center;justify-content:center;text-align:center"><div class="year">Your timeline is empty</div><div class="artist">Your first correct placement will start it.</div></div>`;
+    makeDropSlot(0);
     return;
   }
-  timeline.forEach(track => {
+
+  makeDropSlot(0);
+  timeline.forEach((track, index) => {
     const el = document.createElement("div");
     el.className = "song-tile";
     el.innerHTML = `<div><div class="year">${track.year}</div><div class="song-name"></div><div class="artist"></div></div><img class="tiny-cover" alt="" src="">`;
@@ -206,25 +223,61 @@ function renderTimeline() {
     if (track.artwork) el.querySelector("img").src = track.artwork;
     else el.querySelector("img").style.visibility = "hidden";
     host.appendChild(el);
+    makeDropSlot(index + 1);
   });
 }
 
-function updatePlacementButtons() {
-  const controls = $("placement-controls");
-  controls.innerHTML = "";
-  const positions = timeline.length + 1;
-  for (let i=0;i<positions;i++) {
-    const btn = document.createElement("button");
-    btn.className = "place-button";
-    btn.dataset.position = i;
-    if (!timeline.length) btn.textContent = "Place as first song";
-    else if (i === 0) btn.textContent = "← Before all";
-    else if (i === timeline.length) btn.textContent = "After all →";
-    else btn.textContent = `Between ${timeline[i-1].year} and ${timeline[i].year}`;
-    btn.addEventListener("click", () => placeAt(i));
-    controls.appendChild(btn);
-  }
+
+// Pointer-based dragging works with mouse, pen, and touch screens.
+let dragState = null;
+const dragCard = $("drag-card");
+
+dragCard.addEventListener("pointerdown", event => {
+  if (answered || !current || event.target.closest("button")) return;
+  event.preventDefault();
+  const ghost = document.createElement("div");
+  ghost.className = "drag-ghost";
+  ghost.innerHTML = `<span>♪</span><span>Mystery track</span>`;
+  document.body.appendChild(ghost);
+  dragState = { pointerId: event.pointerId, ghost, position: null };
+  dragCard.classList.add("is-dragging");
+  moveDragGhost(event);
+  updateDropTarget(event.clientX, event.clientY);
+});
+
+function moveDragGhost(event) {
+  if (!dragState) return;
+  dragState.ghost.style.left = `${event.clientX + 14}px`;
+  dragState.ghost.style.top = `${event.clientY + 14}px`;
 }
+
+function updateDropTarget(x, y) {
+  if (!dragState) return;
+  document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
+  const target = document.elementFromPoint(x, y)?.closest(".drop-slot");
+  dragState.position = target ? Number(target.dataset.position) : null;
+  if (target) target.classList.add("is-active");
+}
+
+window.addEventListener("pointermove", event => {
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  moveDragGhost(event);
+  updateDropTarget(event.clientX, event.clientY);
+});
+
+function finishDrag(event) {
+  if (!dragState || (event && event.pointerId !== dragState.pointerId)) return;
+  const position = dragState.position;
+  dragState.ghost.remove();
+  dragState = null;
+  dragCard.classList.remove("is-dragging");
+  document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
+  if (position !== null && position !== undefined) placeAt(position);
+}
+window.addEventListener("pointerup", finishDrag);
+window.addEventListener("pointercancel", finishDrag);
+
+
 
 function updateHearts() {
   $("hearts").innerHTML = [0,1,2].map(i => `<span class="${i < hearts ? "alive" : "lost"}">♥</span>`).join(" ");
@@ -251,7 +304,6 @@ function placeAt(position) {
   result.className = `result ${correct ? "" : "wrong"}`;
   const dateText = current.date.length === 4 ? current.date : current.date;
   result.innerHTML = `<strong>${correct ? "Correct! Nice placement." : "Not quite!"}</strong><br>${escapeHTML(current.title)} by ${escapeHTML(current.artist)} has an Apple catalog release date of <strong>${escapeHTML(dateText)}</strong>.<br><span style="color:#aab6c9;font-size:11px">Date source: ${escapeHTML(current.source)}. ${correct ? "Your timeline grows!" : `You lost a heart. ${hearts} remaining.`}</span>`;
-  $("placement-controls").classList.add("hidden");
   if (correct) renderTimeline();
   if (hearts === 0) {
     result.classList.add("game-over");

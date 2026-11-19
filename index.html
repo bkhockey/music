@@ -24,7 +24,7 @@
     </section>
 
     <section class="game-card">
-      <div class="card-head">
+      <div class="card-head" id="drag-card" role="button" tabindex="0" aria-label="Drag the mystery track to a position on your timeline">
         <div>
           <p class="eyebrow">MYSTERY TRACK</p>
           <h2 id="mystery-title">Loading your first track…</h2>
@@ -53,22 +53,18 @@
         <div><p class="eyebrow">YOUR TIMELINE</p><h2>Place the track</h2></div>
         <div class="status-cluster">
           <div class="hearts" id="hearts" aria-label="3 hearts remaining">♥ ♥ ♥</div>
-          <div class="score"><strong id="score">0</strong><span>correct</span></div>
+          <div class="status-cluster"><div class="hearts" id="hearts" aria-label="3 hearts remaining">♥ ♥ ♥</div><div class="score"><strong id="score">0</strong><span>correct</span></div></div>
         </div>
       </div>
-      <p class="muted instruction">Choose whether the mystery song belongs before, between, or after the songs already revealed.</p>
-      <div id="timeline" class="timeline"></div>
-      <div id="placement-controls" class="placement-controls">
-        <button class="place-button" data-position="0">← Before</button>
-        <button class="place-button" data-position="1">After →</button>
-      </div>
+      <p class="muted instruction">Drag the mystery track and drop it in the gap where it belongs.</p>
+      <div id="timeline" class="timeline" aria-label="Song timeline"></div>
       <div id="result" class="result hidden" aria-live="polite"></div>
       <div class="next-row"><button id="next-button" class="primary" disabled>Next track <span>→</span></button></div>
     </section>
 
     <footer>
-      <p>TrackTime is an independent demo. Music previews are provided by Apple’s iTunes Search API. Music metadata is sourced from MusicBrainz where available.</p>
-      <p><a href="https://musicbrainz.org/doc/MusicBrainz_API" target="_blank" rel="noreferrer">MusicBrainz API</a> · <a href="https://performance-partners.apple.com/search-api" target="_blank" rel="noreferrer">iTunes Search API</a></p>
+      <p>TrackTime is an independent demo. Music previews and catalog release dates are provided by Apple’s iTunes Search API.</p>
+      <p><a href="https://performance-partners.apple.com/search-api" target="_blank" rel="noreferrer">iTunes Search API</a></p>
     </footer>
   </main>
   <script src="app.js"></script>

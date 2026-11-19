@@ -27,6 +27,12 @@ Then visit http://localhost:8000.
 - Apple results from Platinum, Gold, Diamond, Deluxe, Remastered, Anniversary, Expanded, Reissue, Special/Limited/Collector’s Edition, Legacy Edition, Greatest Hits/Best Of, box sets and bonus-track releases are filtered out. Remaster/re-recording markers in track titles are filtered too. Tracks without an album title are skipped.
 - Apple's catalog `releaseDate` is the sole source of the year used in gameplay. MusicBrainz is no longer queried, avoiding mismatches between recording-level first-release dates and the Apple album/preview entry.
 
+## Gameplay controls
+
+- Drag the mystery-track card onto one of the marked gaps in the timeline to place it before, between, or after revealed songs.
+- Dragging uses pointer events, so it supports mouse, pen, and touch input. Keyboard users can focus a timeline gap and press Enter or Space to place the track there.
+- The old row of placement buttons has been removed; the timeline gaps are the placement targets.
+
 ## Important limitations
 
 - This is a prototype with a small hand-picked seed list, not a complete music catalog.

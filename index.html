@@ -23,14 +23,14 @@
       <p class="sub">Listen to the preview, then drag the mystery album into the right place on your timeline.</p>
     </section>
 
-    <section class="mystery-section" aria-label="Mystery album and music player">
+    <section class="mystery-section" aria-label="Mystery album">
       <div class="mystery-heading">
         <div>
           <p class="eyebrow">MYSTERY ALBUM</p>
-          <h2>Take a listen</h2>
-          <p class="muted">Drag the album artwork into a gap on your timeline.</p>
+          <h2>Listen &amp; place it</h2>
+          <p class="muted">Hover over the CD to listen, then drag it onto your timeline.</p>
         </div>
-        <div id="drag-card" class="album-card mystery-album" role="button" tabindex="0" aria-label="Drag the mystery album to a position on your timeline">
+        <div id="drag-card" class="album-card mystery-album" role="button" tabindex="0" aria-label="Hover or tap to listen; drag the mystery album onto your timeline">
           <div class="cd-case">
             <img id="mystery-cover" alt="Mystery album artwork" src="">
             <span class="cover-placeholder" id="cover-placeholder">♪</span>
@@ -40,15 +40,7 @@
         </div>
       </div>
 
-      <div class="player">
-        <button class="play-button" id="play-button" aria-label="Play preview" disabled>▶</button>
-        <div class="player-main">
-          <div class="player-label"><span id="player-status">Finding a playable preview…</span><span id="player-time">0:00 / 0:30</span></div>
-          <div class="progress-track"><div id="progress" class="progress"></div></div>
-          <audio id="audio" preload="none"></audio>
-        </div>
-      </div>
-      <p class="hint" id="track-hint">Album artwork is the only clue. Previews fade in and out gently; your browser may require one click before automatic playback.</p>
+      <audio id="audio" preload="none"></audio>
       <div id="error-box" class="notice hidden"></div>
       <span id="mystery-title" hidden>Mystery track</span>
       <span id="mystery-artist" hidden>Artist and release date are hidden</span>
@@ -62,7 +54,7 @@
           <div class="score"><strong id="score">0</strong><span>correct</span></div>
         </div>
       </div>
-      <p class="muted instruction">Drop the mystery album between the years where you think it belongs.</p>
+      <p class="muted instruction">Drag the mystery CD anywhere along the timeline to choose its position.</p>
       <div id="timeline" class="timeline" aria-label="Song timeline"></div>
       <div id="result" class="result hidden" aria-live="polite"></div>
       <div class="next-row"><button id="next-button" class="primary" disabled>Next track <span>→</span></button></div>

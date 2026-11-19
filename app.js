@@ -128,25 +128,37 @@ async function startPreview() {
   try {
     await audio.play();
     audioUnlocked = true;
-    fadeVolume(TARGET_VOLUME, 1400);
-    $("play-button").textContent = "Ⅱ";
-    $("player-status").textContent = "Playing preview · gentle fade-in";
+    fadeVolume(TARGET_VOLUME, 900);
     return true;
   } catch (e) {
     audio.volume = TARGET_VOLUME;
-    $("play-button").textContent = "▶";
-    $("player-status").textContent = "Tap play once to enable automatic previews";
     return false;
   }
+}
+
+function stopPreview() {
+  if (audio.paused) return;
+  cancelFade();
+  const from = audio.volume;
+  const started = performance.now();
+  const duration = 420;
+  const step = now => {
+    const progress = Math.min(1, (now - started) / duration);
+    audio.volume = Math.max(0, from * (1 - progress));
+    if (progress < 1) fadeFrame = requestAnimationFrame(step);
+    else {
+      fadeFrame = null;
+      audio.pause();
+      audio.volume = TARGET_VOLUME;
+    }
+  };
+  fadeFrame = requestAnimationFrame(step);
 }
 
 function resetPlayer() {
   cancelFade();
   audio.pause(); audio.removeAttribute("src"); audio.load(); audio.volume = TARGET_VOLUME;
   fadingOut = false;
-  $("play-button").disabled = true; $("play-button").textContent = "▶";
-  $("player-status").textContent = "Finding a playable preview…";
-  $("player-time").textContent = "0:00 / 0:30"; $("progress").style.width = "0%";
 }
 
 async function loadNext() {
@@ -180,13 +192,8 @@ async function loadNext() {
     return;
   }
   $("mystery-title").textContent = "Mystery track";
-  $("player-status").textContent = "Preview ready — listen and make your guess";
   audio.src = current.preview;
-  $("play-button").disabled = false;
   renderTimeline();
-  // Browsers may block audible autoplay until the player has received a user gesture.
-  // Once unlocked, previews start automatically on every subsequent round.
-  await startPreview();
 }
 
 function addTiltEffect(card) {
@@ -216,25 +223,7 @@ function renderTimeline() {
   const host = $("timeline");
   host.innerHTML = "";
 
-  const makeDropSlot = position => {
-    const slot = document.createElement("div");
-    slot.className = "drop-slot";
-    slot.dataset.position = position;
-    slot.setAttribute("aria-label", `Place mystery album at position ${position + 1}`);
-    slot.setAttribute("role", "button");
-    slot.tabIndex = 0;
-    slot.innerHTML = `<span class="drop-plus">+</span><span class="drop-label">Drop album</span>`;
-    slot.addEventListener("keydown", event => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        placeAt(position);
-      }
-    });
-    host.appendChild(slot);
-  };
-
-  makeDropSlot(0);
-  timeline.forEach((track, index) => {
+  timeline.forEach(track => {
     const el = document.createElement("div");
     el.className = "album-card timeline-album";
     el.innerHTML = `<div class="cd-case"><img alt="Album artwork" src=""><span class="card-glare" aria-hidden="true"></span></div><div class="year-float"></div>`;
@@ -243,7 +232,6 @@ function renderTimeline() {
     el.querySelector(".year-float").textContent = track.year;
     addTiltEffect(el);
     host.appendChild(el);
-    makeDropSlot(index + 1);
   });
 }
 
@@ -253,8 +241,27 @@ let dragState = null;
 const dragCard = $("drag-card");
 addTiltEffect(dragCard);
 
+dragCard.addEventListener("pointerenter", event => {
+  if (event.pointerType === "mouse" && current && !answered) startPreview();
+});
+dragCard.addEventListener("pointerleave", event => {
+  if (event.pointerType === "mouse" && !dragState) stopPreview();
+});
+dragCard.addEventListener("click", () => {
+  // Click/tap fallback for browsers that block playback from hover alone.
+  if (audio.paused && current && !answered) startPreview();
+});
+dragCard.addEventListener("keydown", event => {
+  if ((event.key === "Enter" || event.key === " ") && current && !answered) {
+    event.preventDefault();
+    if (audio.paused) startPreview(); else stopPreview();
+  }
+});
+
 dragCard.addEventListener("pointerdown", event => {
   if (answered || !current || event.target.closest("button")) return;
+  // Also attempt playback on pointer-down: browsers may reject media started by hover alone.
+  startPreview();
   event.preventDefault();
   const ghost = document.createElement("div");
   ghost.className = "drag-ghost";
@@ -274,10 +281,20 @@ function moveDragGhost(event) {
 
 function updateDropTarget(x, y) {
   if (!dragState) return;
-  document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
-  const target = document.elementFromPoint(x, y)?.closest(".drop-slot");
-  dragState.position = target ? Number(target.dataset.position) : null;
-  if (target) target.classList.add("is-active");
+  const host = $("timeline");
+  const rect = host.getBoundingClientRect();
+  const inside = x >= rect.left && x <= rect.right && y >= rect.top - 18 && y <= rect.bottom + 18;
+  if (!inside) {
+    dragState.position = null;
+    return;
+  }
+  const albums = [...host.querySelectorAll(".timeline-album")];
+  let position = albums.length;
+  for (let i = 0; i < albums.length; i++) {
+    const r = albums[i].getBoundingClientRect();
+    if (x < r.left + r.width / 2) { position = i; break; }
+  }
+  dragState.position = position;
 }
 
 window.addEventListener("pointermove", event => {
@@ -292,7 +309,7 @@ function finishDrag(event) {
   dragState.ghost.remove();
   dragState = null;
   dragCard.classList.remove("is-dragging");
-  document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
+  stopPreview();
   if (position !== null && position !== undefined) placeAt(position);
 }
 window.addEventListener("pointerup", finishDrag);
@@ -308,6 +325,7 @@ function updateHearts() {
 function placeAt(position) {
   if (answered || !current) return;
   answered = true;
+  stopPreview();
   const left = timeline[position-1], right = timeline[position];
   const correct = (!left || left.year <= current.year) && (!right || current.year <= right.year);
   if (correct) {
@@ -345,33 +363,21 @@ function escapeHTML(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-$("play-button").addEventListener("click", async () => {
-  if (!audio.src) return;
-  if (audio.paused) await startPreview();
-  else {
-    cancelFade();
-    audio.pause();
-    audio.volume = TARGET_VOLUME;
-    $("play-button").textContent = "▶";
-    $("player-status").textContent = "Preview paused";
-  }
-});
 audio.addEventListener("timeupdate", () => {
-  const t = Math.min(audio.currentTime, 30), duration = Math.min(audio.duration || 30, 30);
-  $("progress").style.width = `${(t/duration)*100}%`;
-  const fmt = n => `0:${String(Math.floor(n)).padStart(2,"0")}`;
-  $("player-time").textContent = `${fmt(t)} / 0:30`;
   if (audio.currentTime >= 28.5 && !fadingOut) {
     fadingOut = true;
     fadeVolume(0, 1500);
   }
-  if (audio.currentTime >= 30) audio.pause();
+  if (audio.currentTime >= 30) {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = TARGET_VOLUME;
+    fadingOut = false;
+  }
 });
 audio.addEventListener("ended", () => {
   cancelFade(); audio.volume = TARGET_VOLUME; fadingOut = false;
-  $("play-button").textContent = "▶"; $("player-status").textContent = "Preview finished";
 });
-audio.addEventListener("pause", () => { $("play-button").textContent = "▶"; });
 $("next-button").addEventListener("click", () => {
   if ($("next-button").dataset.action === "restart") {
     timeline = []; albumByYear = new Map(); score = 0; hearts = 3; round = 1; current = null;

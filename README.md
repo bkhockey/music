@@ -52,3 +52,11 @@ Then visit http://localhost:8000.
 - Expand the seed catalog and pre-validate song/artist matches.
 - Add genre, decade, difficulty and multiplayer modes.
 - Use a curated dataset with verified original release dates.
+
+
+## v7 interaction updates
+- Removed the visible play button, player bar, and preview duration display.
+- Hovering over the mystery CD starts playback with a short fade-in; moving away fades out and pauses. Browsers that block hover playback can use a click/tap or keyboard activation as a fallback.
+- Touch devices start playback on the initial tap/drag gesture.
+- Enlarged the mystery CD artwork.
+- Removed visible drop-slot indicators. Drop position is calculated from the pointer's horizontal position over the timeline.

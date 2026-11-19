@@ -58,3 +58,9 @@ Then visit http://localhost:8000.
 - Removed the large introductory hero/header copy to give the game more vertical room.
 - Removed all visible drop-slot indicators from the timeline.
 - While dragging, an empty animated gap opens between albums; nearby albums slide apart to make room.
+
+
+### Timeline insertion animation update
+- Removed legacy visible drop-slot styles.
+- The drag insertion gap is completely invisible; timeline album cards slide apart using a FLIP translate animation.
+- Added cache-busting query versions to CSS and JavaScript assets.

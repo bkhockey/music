@@ -233,7 +233,8 @@ dragCard.addEventListener("pointerdown", event => {
   ghost.className = "drag-ghost";
   ghost.innerHTML = `<div class="cd-case"><img alt="" src="${current.artwork || ""}"><span class="card-glare"></span></div>`;
   document.body.appendChild(ghost);
-  dragState = { pointerId: event.pointerId, ghost, position: null };
+  dragState = { pointerId: event.pointerId, ghost, position: null, space: null };
+  try { dragCard.setPointerCapture(event.pointerId); } catch (_) {}
   dragCard.classList.add("is-dragging");
   moveDragGhost(event);
   updateDropTarget(event.clientX, event.clientY);
@@ -245,20 +246,31 @@ function moveDragGhost(event) {
   dragState.ghost.style.top = `${event.clientY + 16}px`;
 }
 
+// FLIP animation: measure the album cards before and after changing the
+// insertion point, then animate their independent `translate` property.
+// This moves the cards without drawing a visible drop target or overriding tilt.
 function animateTimelineShift(host, mutate) {
-  const before = new Map([...host.querySelectorAll(".timeline-album")].map(el => [el, el.getBoundingClientRect()]));
+  const cards = [...host.querySelectorAll(".timeline-album")];
+  const before = new Map(cards.map(el => [el, el.getBoundingClientRect()]));
   mutate();
   for (const [el, oldRect] of before) {
     const newRect = el.getBoundingClientRect();
     const dx = oldRect.left - newRect.left;
-    if (Math.abs(dx) > 1) {
-      el.style.transition = "none";
-      el.style.transform = `translateX(${dx}px)`;
-      requestAnimationFrame(() => {
-        el.style.transition = "transform 260ms cubic-bezier(.2,.8,.2,1)";
-        el.style.transform = "";
-      });
-    }
+    if (Math.abs(dx) < 1) continue;
+    el.style.transition = "none";
+    el.style.translate = `${dx}px 0px`;
+    // Commit the inverse position before animating it back to the new layout.
+    void el.offsetWidth;
+    requestAnimationFrame(() => {
+      el.style.transition = "translate 280ms cubic-bezier(.2,.8,.2,1)";
+      el.style.translate = "0px 0px";
+      el.addEventListener("transitionend", event => {
+        if (event.propertyName === "translate") {
+          el.style.transition = "";
+          el.style.translate = "";
+        }
+      }, { once: true });
+    });
   }
 }
 
@@ -266,42 +278,42 @@ function updateDropTarget(x, y) {
   if (!dragState) return;
   const host = $("timeline");
   const rect = host.getBoundingClientRect();
-  const inside = y >= rect.top - 24 && y <= rect.bottom + 24 && x >= rect.left && x <= rect.right;
+  const inside = y >= rect.top - 28 && y <= rect.bottom + 28 && x >= rect.left && x <= rect.right;
+
   if (!inside) {
     dragState.position = null;
     if (dragState.space) {
-      const old = dragState.space;
-      animateTimelineShift(host, () => old.remove());
+      const oldSpace = dragState.space;
+      animateTimelineShift(host, () => oldSpace.remove());
       dragState.space = null;
     }
     return;
   }
 
   const albums = [...host.querySelectorAll(".timeline-album")];
-  let position = albums.findIndex(el => x < el.getBoundingClientRect().left + el.getBoundingClientRect().width / 2);
+  let position = albums.findIndex(el => {
+    const r = el.getBoundingClientRect();
+    return x < r.left + r.width / 2;
+  });
   if (position < 0) position = albums.length;
   dragState.position = position;
 
   if (!dragState.space) {
+    // The gap is intentionally blank and has no text, border, or icon.
     const space = document.createElement("div");
     space.className = "drop-space";
+    space.setAttribute("aria-hidden", "true");
     dragState.space = space;
-    animateTimelineShift(host, () => {
-      if (position >= albums.length) host.appendChild(space);
-      else host.insertBefore(space, albums[position]);
-      requestAnimationFrame(() => space.classList.add("is-open"));
-    });
-  } else {
-    const currentIndex = [...host.children].indexOf(dragState.space);
-    const targetNode = albums[position] || null;
-    const targetIndex = targetNode ? [...host.children].indexOf(targetNode) : host.children.length - 1;
-    if (currentIndex !== targetIndex && currentIndex !== targetIndex - 1) {
-      const space = dragState.space;
-      animateTimelineShift(host, () => {
-        if (targetNode) host.insertBefore(space, targetNode);
-        else host.appendChild(space);
-      });
-    }
+    const nextAlbum = albums[position] || null;
+    animateTimelineShift(host, () => host.insertBefore(space, nextAlbum));
+    return;
+  }
+
+  const space = dragState.space;
+  const nextAlbum = albums[position] || null;
+  const alreadyAtPosition = nextAlbum ? space.nextElementSibling === nextAlbum : host.lastElementChild === space;
+  if (!alreadyAtPosition) {
+    animateTimelineShift(host, () => host.insertBefore(space, nextAlbum));
   }
 }
 
@@ -320,7 +332,6 @@ function finishDrag(event) {
   if (space) space.remove();
   dragState = null;
   dragCard.classList.remove("is-dragging");
-  document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
   if (position !== null && position !== undefined) placeAt(position);
 }
 window.addEventListener("pointerup", finishDrag);

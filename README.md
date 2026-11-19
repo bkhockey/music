@@ -47,6 +47,10 @@ Apple's public catalogue does not provide a definitive original-first-release fl
 
 Apple preview availability and autoplay are controlled by the browser and Apple catalogue. If autoplay is blocked, the game retries playback after the first user interaction. A missing preview does not stop the game.
 
+## Timeline layout (v4)
+
+The hover-to-place box aligns with the top and horizontal spacing of album artwork. Timeline covers are 20% larger than in v3 (112.8px desktop, 91.2px mobile), and the release-year labels are slightly larger (14px desktop, 13px mobile).
+
 ## Interaction
 
 Hover on the left or right side of an album to reveal a green **PLACE HERE** box in the corresponding chronological gap. The timeline makes room for it, without moving the large mystery cover. Click the box to submit a guess. On touch screens, tap the left or right half of an album first, then tap the revealed box. For keyboard navigation, focus an album, use Left/Right Arrow to choose a side, and press Enter to confirm. The mystery cover can be clicked to replay the preview.

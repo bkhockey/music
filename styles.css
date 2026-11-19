@@ -9,7 +9,7 @@
   --muted: #858894;
   --accent: #c8f36a;
   --danger: #ff6477;
-  --album-size: 94px;
+  --album-size: 112.8px; /* 20% larger than v3 (94px) */
   --album-gap: 24px;
   font-family: Manrope, system-ui, sans-serif;
 }
@@ -106,7 +106,7 @@ button { font: inherit; }
   object-fit: cover; border-radius: 4px; background: #292b32;
   box-shadow: 0 7px 18px #0006;
 }
-.album-year { margin-top: 10px; color: #f0f0f1; font: 500 12px 'DM Mono', monospace; }
+.album-year { display: block; margin-top: 11px; color: #f0f0f1; font: 500 14px/1.35 'DM Mono', monospace; }
 .timeline-edge-labels { display: flex; justify-content: space-between; margin: 12px 2px 0; font-size: 9px; }
 .feedback { min-height: 28px; margin-top: 20px; text-align: center; font-size: 13px; color: var(--accent); }
 .feedback.wrong { color: var(--danger); }
@@ -155,7 +155,7 @@ button { font: inherit; }
   .audio-status { margin-top: 12px; }
   .timeline-heading { font-size: 9px; }
   .timeline-hint { max-width: 52%; text-align: right; }
-  :root { --album-size: 76px; --album-gap: 17px; }
+  :root { --album-size: 91.2px; --album-gap: 17px; }
   .timeline-viewport { margin: 0 -16px; width: calc(100% + 32px); padding-left: 16px; padding-right: 16px; }
   .status { gap: 16px; }
   .hearts { font-size: 18px; gap: 4px; }
@@ -165,20 +165,21 @@ button { font: inherit; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
-/* Hover-to-place timeline. Only the selected insertion box takes up space. */
+/* Hover-to-place timeline. Active placement boxes match the artwork size
+   and the same left/right gutters as timeline albums for clean alignment. */
 .album-slot:focus-visible, .mystery-card:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 5px;
 }
 .album-slot:hover img { box-shadow: 0 0 0 2px #c8f36977, 0 7px 18px #0008; }
 .placement-slot {
-  appearance: none; display: block; flex: 0 0 0; min-width: 0;
-  height: calc(var(--album-size) + 29px); overflow: hidden;
+  appearance: none; display: flex; align-items: flex-start; justify-content: flex-start; flex: 0 0 0; min-width: 0;
+  height: calc(var(--album-size) + 30px); overflow: hidden;
   margin: 0; padding: 0; border: 0;
   background: transparent; opacity: 0; pointer-events: none;
-  transition: flex-basis .22s cubic-bezier(.2,.8,.2,1), opacity .16s ease;
+  transition: flex-basis .22s cubic-bezier(.2,.8,.2,1), margin .22s cubic-bezier(.2,.8,.2,1), opacity .16s ease;
 }
 .placement-slot.active {
-  flex-basis: var(--album-size); opacity: 1;
+  flex-basis: var(--album-size); margin: 0 calc(var(--album-gap) / 2); opacity: 1;
   pointer-events: auto; cursor: pointer;
 }
 .placement-box {
@@ -193,6 +194,7 @@ button { font: inherit; }
 .placement-slot.active:focus-visible .placement-box { background: #c8f36a28; border-style: solid; }
 .placement-slot:focus-visible { outline: 0; }
 @media (max-width: 650px) {
+  .album-year { font-size: 13px; }
   .placement-caption { font-size: 8px; }
   .placement-plus { font-size: 24px; }
 }

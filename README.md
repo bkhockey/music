@@ -6,7 +6,7 @@ A static browser-based music release-year guessing game. Built with plain HTML, 
 
 - `index.html` — page structure and accessible game overlays
 - `styles.css` — responsive layout, artwork styling and timeline animations
-- `app.js` — Apple iTunes Search/Lookup integration, game state, audio and pointer drag interaction
+- `app.js` — Apple iTunes Search/Lookup integration, game state, audio and hover/click placement
 
 ## Run locally
 
@@ -49,7 +49,9 @@ Apple preview availability and autoplay are controlled by the browser and Apple 
 
 ## Interaction
 
-The mystery cover uses Pointer Events, which support mouse, pen and touch. While dragging, timeline covers physically translate away from the intended insertion point. Releasing submits the position; cancelling returns the covers to their original positions.
+Hover on the left or right side of an album to reveal a green **PLACE HERE** box in the corresponding chronological gap. The timeline makes room for it, without moving the large mystery cover. Click the box to submit a guess. On touch screens, tap the left or right half of an album first, then tap the revealed box. For keyboard navigation, focus an album, use Left/Right Arrow to choose a side, and press Enter to confirm. The mystery cover can be clicked to replay the preview.
+
+Correct guesses and missed guesses both add their albums in chronological order to the timeline; missed guesses still cost one heart. After the game, the final recap lists every encountered track with its album, artist, year, guess result, and a link to Apple Music where available.
 
 ## Validation
 

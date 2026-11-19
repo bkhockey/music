@@ -27,7 +27,7 @@
 
   const state = {
     catalog: [], timeline: [], current: null, hearts: 3, rounds: 1,
-    score: 0, busy: false, drag: null, insertion: null, autoplayBlocked: false,
+    score: 0, busy: false, insertion: null, autoplayBlocked: false,
     audioToken: 0, recent: [], started: false, history: []
   };
 
@@ -210,22 +210,58 @@
 
   function renderTimeline() {
     ui.timeline.replaceChildren();
-    state.timeline.forEach((album, index) => {
-      const slot = document.createElement("div");
+    state.insertion = null;
+
+    // Every possible chronological position has a hidden placement box.
+    // Hovering either half of an album reveals its neighbouring box.
+    for (let index = 0; index <= state.timeline.length; index++) {
+      const placement = document.createElement("button");
+      placement.type = "button";
+      placement.className = "placement-slot";
+      placement.dataset.insertIndex = String(index);
+      placement.disabled = true;
+      placement.tabIndex = -1;
+      placement.setAttribute("aria-hidden", "true");
+      const previous = state.timeline[index - 1];
+      const next = state.timeline[index];
+      placement.setAttribute("aria-label", previous && next
+        ? `Place between ${previous.album} and ${next.album}`
+        : previous ? `Place after ${previous.album}`
+        : next ? `Place before ${next.album}` : "Place the mystery track");
+
+      const box = document.createElement("span");
+      box.className = "placement-box";
+      box.setAttribute("aria-hidden", "true");
+      const plus = document.createElement("span");
+      plus.className = "placement-plus";
+      plus.textContent = "+";
+      const caption = document.createElement("span");
+      caption.className = "placement-caption";
+      caption.textContent = "PLACE HERE";
+      box.append(plus, caption);
+      placement.append(box);
+      ui.timeline.append(placement);
+
+      const album = state.timeline[index];
+      if (!album) continue;
+      const slot = document.createElement("button");
+      slot.type = "button";
       slot.className = "album-slot";
       slot.dataset.index = String(index);
+      slot.setAttribute("aria-label", `${album.album}, ${album.artist}, ${album.year}. Hover left or right to choose a position. Use arrow keys to choose a side and Enter to place.`);
+      slot.title = `${album.album} — ${album.artist} (${album.year})`;
       const img = document.createElement("img");
       img.src = album.artwork;
-      img.alt = `${album.album} album artwork`;
+      img.alt = "";
       img.loading = "lazy";
       img.draggable = false;
       img.onerror = () => { img.src = fallbackArtwork(); };
-      const year = document.createElement("div");
+      const year = document.createElement("span");
       year.className = "album-year";
       year.textContent = album.year;
       slot.append(img, year);
       ui.timeline.append(slot);
-    });
+    }
   }
 
   function fallbackArtwork() {
@@ -237,7 +273,10 @@
     state.current = album;
     ui.artwork.src = album.artwork;
     ui.artwork.onerror = () => { ui.artwork.src = fallbackArtwork(); };
-    ui.hint.textContent = "Drag the cover to its place";
+    ui.hint.textContent = window.matchMedia("(hover: none)").matches
+      ? "Tap beside an album, then tap the box"
+      : "Hover beside an album, then click the box";
+    clearPlacement();
     ui.feedback.textContent = "";
     ui.feedback.className = "feedback";
     startPreview(album.track.preview);
@@ -271,7 +310,7 @@
     } catch {
       if (token === state.audioToken) {
         state.autoplayBlocked = true;
-        ui.audioStatus.textContent = "Preview ready — tap or drag to listen";
+        ui.audioStatus.textContent = "Preview ready — click or tap to listen";
         ui.audioStatus.classList.add("muted");
       }
     }
@@ -290,87 +329,84 @@
     }
   }
 
-  function getInsertionIndex(clientX) {
-    const slots = [...ui.timeline.querySelectorAll(".album-slot")];
-    if (!slots.length) return 0;
-    for (let i = 0; i < slots.length; i++) {
-      const rect = slots[i].getBoundingClientRect();
-      if (clientX < rect.left + rect.width / 2) return i;
-    }
-    return slots.length;
-  }
-
-  function updatePush(index) {
+  function setActivePlacement(index) {
+    if (state.busy || !state.current || index === state.insertion ||
+        index < 0 || index > state.timeline.length) return;
     state.insertion = index;
-    const slots = [...ui.timeline.querySelectorAll(".album-slot")];
-    const mid = slots.length / 2;
-    slots.forEach((slot, i) => {
-      slot.classList.toggle("push-left", i < index && i < mid);
-      slot.classList.toggle("push-right", i >= index && i >= mid);
-    });
-    // Push all albums away from the insertion point, including on short timelines.
-    slots.forEach((slot, i) => {
-      if (i < index) slot.classList.add("push-left");
-      else slot.classList.add("push-right");
+    ui.timeline.querySelectorAll(".placement-slot").forEach(button => {
+      const active = Number(button.dataset.insertIndex) === index;
+      button.classList.toggle("active", active);
+      button.disabled = !active;
+      button.tabIndex = active ? 0 : -1;
+      button.setAttribute("aria-hidden", active ? "false" : "true");
     });
   }
 
-  function clearPush() {
-    ui.timeline.querySelectorAll(".album-slot").forEach(slot => {
-      slot.classList.remove("push-left", "push-right");
-    });
+  function clearPlacement() {
     state.insertion = null;
+    ui.timeline.querySelectorAll(".placement-slot").forEach(button => {
+      button.classList.remove("active");
+      button.disabled = true;
+      button.tabIndex = -1;
+      button.setAttribute("aria-hidden", "true");
+    });
   }
 
-  function pointerDown(event) {
-    if (state.busy || !state.current || event.button > 0) return;
-    resumeAudio();
-    event.preventDefault();
-    const rect = ui.mystery.getBoundingClientRect();
-    state.drag = {
-      pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
-      left: rect.left, top: rect.top, moved: false
-    };
-    ui.mystery.setPointerCapture(event.pointerId);
-    ui.mystery.classList.add("dragging");
-    const targetSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--album-size")) || 94;
-    state.drag.scale = Math.min(1, targetSize / rect.width);
+  function positionBesideAlbum(album, clientX) {
+    const rect = album.getBoundingClientRect();
+    const index = Number(album.dataset.index);
+    return index + (clientX >= rect.left + rect.width / 2 ? 1 : 0);
   }
 
-  function pointerMove(event) {
-    if (!state.drag || event.pointerId !== state.drag.pointerId) return;
-    const dx = event.clientX - state.drag.startX;
-    const dy = event.clientY - state.drag.startY;
-    if (Math.abs(dx) + Math.abs(dy) > 5) state.drag.moved = true;
-    const scale = state.drag.scale;
-    ui.mystery.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${scale})`;
-    const index = getInsertionIndex(event.clientX);
-    updatePush(index);
-    if (state.drag.moved) ui.hint.textContent = "Release to place your guess";
+  function onTimelinePointerMove(event) {
+    if (event.pointerType === "touch" || state.busy || !state.current) return;
+    const album = event.target.closest(".album-slot");
+    // Keep a revealed box open while moving the pointer onto it.
+    if (album) setActivePlacement(positionBesideAlbum(album, event.clientX));
   }
 
-  function pointerUp(event) {
-    if (!state.drag || event.pointerId !== state.drag.pointerId) return;
-    const moved = state.drag.moved;
-    const index = state.insertion ?? getInsertionIndex(event.clientX);
-    state.drag = null;
-    ui.mystery.releasePointerCapture?.(event.pointerId);
-    ui.mystery.classList.remove("dragging");
-    ui.mystery.style.transform = "";
-    clearPush();
-    const bounds = ui.viewport.getBoundingClientRect();
-    const overTimeline = event.clientY >= bounds.top - 25 && event.clientY <= bounds.bottom + 25;
-    if (moved && overTimeline) submitGuess(index);
-    else ui.hint.textContent = "Drag the cover to its place";
+  function onTimelineClick(event) {
+    if (state.busy || !state.current) return;
+    const placement = event.target.closest(".placement-slot");
+    if (placement && !placement.disabled) {
+      submitGuess(Number(placement.dataset.insertIndex));
+      return;
+    }
+    // Touch screens have no hover: first tap beside an album reveals the box,
+    // and the next tap on that box confirms the placement.
+    const album = event.target.closest(".album-slot");
+    if (album) setActivePlacement(positionBesideAlbum(album, event.clientX));
   }
 
-  function pointerCancel() {
-    if (!state.drag) return;
-    state.drag = null;
-    ui.mystery.classList.remove("dragging");
-    ui.mystery.style.transform = "";
-    clearPush();
-    ui.hint.textContent = "Drag the cover to its place";
+  function onTimelineKeyDown(event) {
+    if (state.busy || !state.current) return;
+    const album = event.target.closest(".album-slot");
+    if (!album) return;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      setActivePlacement(Number(album.dataset.index) + (event.key === "ArrowRight" ? 1 : 0));
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const left = Number(album.dataset.index);
+      const selected = state.insertion === left || state.insertion === left + 1
+        ? state.insertion : left + 1;
+      if (state.insertion !== selected) setActivePlacement(selected);
+      else submitGuess(selected);
+    }
+  }
+
+  async function replayPreview() {
+    if (state.busy || !state.current || !ui.audio.src) return;
+    try {
+      ui.audio.currentTime = 0;
+      await ui.audio.play();
+      state.autoplayBlocked = false;
+      ui.audioStatus.textContent = "Now playing preview";
+      ui.audioStatus.classList.remove("muted");
+    } catch {
+      ui.audioStatus.textContent = "Preview could not be played";
+      ui.audioStatus.classList.add("muted");
+    }
   }
 
   function correctInsertion(index, album) {
@@ -382,6 +418,7 @@
   function submitGuess(index) {
     if (state.busy || !state.current) return;
     state.busy = true;
+    clearPlacement();
     stopPreview();
     const album = state.current;
     const correct = correctInsertion(index, album);
@@ -471,7 +508,7 @@
 
   async function startGame() {
     state.busy = true;
-    state.drag = null;
+    state.insertion = null;
     state.timeline = [];
     state.history = [];
     ui.summary.replaceChildren();
@@ -515,21 +552,26 @@
   }
 
   function init() {
-    ui.mystery.addEventListener("pointerdown", pointerDown);
-    ui.mystery.addEventListener("pointermove", pointerMove);
-    ui.mystery.addEventListener("pointerup", pointerUp);
-    ui.mystery.addEventListener("pointercancel", pointerCancel);
-    ui.mystery.addEventListener("lostpointercapture", pointerCancel);
+    ui.timeline.addEventListener("pointermove", onTimelinePointerMove);
+    ui.timeline.addEventListener("click", onTimelineClick);
+    ui.timeline.addEventListener("keydown", onTimelineKeyDown);
+    ui.timeline.addEventListener("pointerleave", event => {
+      if (event.pointerType !== "touch" && !ui.timeline.contains(document.activeElement)) {
+        clearPlacement();
+      }
+    });
+    ui.timeline.addEventListener("focusout", event => {
+      // Moving focus from an album to its placement box must not close it.
+      if (event.relatedTarget && ui.timeline.contains(event.relatedTarget)) return;
+      queueMicrotask(() => {
+        if (!ui.timeline.contains(document.activeElement)) clearPlacement();
+      });
+    });
+    ui.mystery.addEventListener("click", replayPreview);
     ui.mystery.addEventListener("keydown", event => {
-      if ((event.key === "Enter" || event.key === " ") && state.current && !state.busy) {
+      if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        resumeAudio();
-        const guessed = window.prompt("Enter the album's release year:");
-        if (guessed !== null && /^\d{4}$/.test(guessed.trim())) {
-          const year = Number(guessed);
-          const index = state.timeline.findIndex(item => item.year > year);
-          submitGuess(index < 0 ? state.timeline.length : index);
-        }
+        replayPreview();
       }
     });
     ui.audio.addEventListener("ended", onAudioEnded);

@@ -176,9 +176,10 @@ async function loadNext() {
   }
   $("mystery-title").textContent = "Mystery track";
   audio.src = current.preview;
+  audio.load();
+  setCover(current.artwork);
   renderTimeline();
-  // Attempt audible autoplay. If the browser blocks it, the first user gesture
-  // anywhere on the page retries playback without showing a play button.
+  // Try audible autoplay. Browsers may reject this until a real user gesture.
   await startPreview();
 }
 
@@ -268,9 +269,19 @@ function moveDragGhost(event) {
 function updateDropTarget(x, y) {
   if (!dragState) return;
   document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
-  const target = document.elementFromPoint(x, y)?.closest(".drop-slot");
-  dragState.position = target ? Number(target.dataset.position) : null;
-  if (target) target.classList.add("is-active");
+  const host = $("timeline");
+  const rect = host.getBoundingClientRect();
+  // Accept a drop anywhere inside the timeline, not just on the narrow gap markers.
+  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+    dragState.position = null;
+    return;
+  }
+  const albums = [...host.querySelectorAll(".timeline-album")];
+  let position = albums.findIndex(album => x < album.getBoundingClientRect().left + album.getBoundingClientRect().width / 2);
+  if (position < 0) position = albums.length;
+  dragState.position = position;
+  const slot = host.querySelector(`.drop-slot[data-position="${position}"]`);
+  if (slot) slot.classList.add("is-active");
 }
 
 window.addEventListener("pointermove", event => {
@@ -338,12 +349,12 @@ function escapeHTML(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-document.addEventListener("pointerdown", () => {
-  if (autoplayBlocked && current && !answered) startPreview();
-}, true);
-document.addEventListener("keydown", () => {
-  if (autoplayBlocked && current && !answered) startPreview();
-}, true);
+function retryPlaybackFromGesture() {
+  // Calling play() directly from this trusted gesture satisfies browser audio policies.
+  if (current && !answered && audio.paused) startPreview();
+}
+document.addEventListener("pointerdown", retryPlaybackFromGesture, true);
+document.addEventListener("keydown", retryPlaybackFromGesture, true);
 audio.addEventListener("timeupdate", () => {
   if (audio.currentTime >= 28.5 && !fadingOut) {
     fadingOut = true;

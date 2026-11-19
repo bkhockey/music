@@ -176,10 +176,9 @@ async function loadNext() {
   }
   $("mystery-title").textContent = "Mystery track";
   audio.src = current.preview;
-  audio.load();
-  setCover(current.artwork);
   renderTimeline();
-  // Try audible autoplay. Browsers may reject this until a real user gesture.
+  // Attempt audible autoplay. If the browser blocks it, the first user gesture
+  // anywhere on the page retries playback without showing a play button.
   await startPreview();
 }
 
@@ -209,26 +208,7 @@ function addTiltEffect(card) {
 function renderTimeline() {
   const host = $("timeline");
   host.innerHTML = "";
-
-  const makeDropSlot = position => {
-    const slot = document.createElement("div");
-    slot.className = "drop-slot";
-    slot.dataset.position = position;
-    slot.setAttribute("aria-label", `Place mystery album at position ${position + 1}`);
-    slot.setAttribute("role", "button");
-    slot.tabIndex = 0;
-    slot.innerHTML = `<span class="drop-plus">+</span><span class="drop-label">Drop album</span>`;
-    slot.addEventListener("keydown", event => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        placeAt(position);
-      }
-    });
-    host.appendChild(slot);
-  };
-
-  makeDropSlot(0);
-  timeline.forEach((track, index) => {
+  timeline.forEach(track => {
     const el = document.createElement("div");
     el.className = "album-card timeline-album";
     el.innerHTML = `<div class="cd-case"><img alt="Album artwork" src=""><span class="card-glare" aria-hidden="true"></span></div><div class="year-float"></div>`;
@@ -237,7 +217,6 @@ function renderTimeline() {
     el.querySelector(".year-float").textContent = track.year;
     addTiltEffect(el);
     host.appendChild(el);
-    makeDropSlot(index + 1);
   });
 }
 
@@ -266,23 +245,66 @@ function moveDragGhost(event) {
   dragState.ghost.style.top = `${event.clientY + 16}px`;
 }
 
+function animateTimelineShift(host, mutate) {
+  const before = new Map([...host.querySelectorAll(".timeline-album")].map(el => [el, el.getBoundingClientRect()]));
+  mutate();
+  for (const [el, oldRect] of before) {
+    const newRect = el.getBoundingClientRect();
+    const dx = oldRect.left - newRect.left;
+    if (Math.abs(dx) > 1) {
+      el.style.transition = "none";
+      el.style.transform = `translateX(${dx}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 260ms cubic-bezier(.2,.8,.2,1)";
+        el.style.transform = "";
+      });
+    }
+  }
+}
+
 function updateDropTarget(x, y) {
   if (!dragState) return;
-  document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
   const host = $("timeline");
   const rect = host.getBoundingClientRect();
-  // Accept a drop anywhere inside the timeline, not just on the narrow gap markers.
-  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+  const inside = y >= rect.top - 24 && y <= rect.bottom + 24 && x >= rect.left && x <= rect.right;
+  if (!inside) {
     dragState.position = null;
+    if (dragState.space) {
+      const old = dragState.space;
+      animateTimelineShift(host, () => old.remove());
+      dragState.space = null;
+    }
     return;
   }
+
   const albums = [...host.querySelectorAll(".timeline-album")];
-  let position = albums.findIndex(album => x < album.getBoundingClientRect().left + album.getBoundingClientRect().width / 2);
+  let position = albums.findIndex(el => x < el.getBoundingClientRect().left + el.getBoundingClientRect().width / 2);
   if (position < 0) position = albums.length;
   dragState.position = position;
-  const slot = host.querySelector(`.drop-slot[data-position="${position}"]`);
-  if (slot) slot.classList.add("is-active");
+
+  if (!dragState.space) {
+    const space = document.createElement("div");
+    space.className = "drop-space";
+    dragState.space = space;
+    animateTimelineShift(host, () => {
+      if (position >= albums.length) host.appendChild(space);
+      else host.insertBefore(space, albums[position]);
+      requestAnimationFrame(() => space.classList.add("is-open"));
+    });
+  } else {
+    const currentIndex = [...host.children].indexOf(dragState.space);
+    const targetNode = albums[position] || null;
+    const targetIndex = targetNode ? [...host.children].indexOf(targetNode) : host.children.length - 1;
+    if (currentIndex !== targetIndex && currentIndex !== targetIndex - 1) {
+      const space = dragState.space;
+      animateTimelineShift(host, () => {
+        if (targetNode) host.insertBefore(space, targetNode);
+        else host.appendChild(space);
+      });
+    }
+  }
 }
+
 
 window.addEventListener("pointermove", event => {
   if (!dragState || event.pointerId !== dragState.pointerId) return;
@@ -293,7 +315,9 @@ window.addEventListener("pointermove", event => {
 function finishDrag(event) {
   if (!dragState || (event && event.pointerId !== dragState.pointerId)) return;
   const position = dragState.position;
+  const space = dragState.space;
   dragState.ghost.remove();
+  if (space) space.remove();
   dragState = null;
   dragCard.classList.remove("is-dragging");
   document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
@@ -349,12 +373,12 @@ function escapeHTML(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-function retryPlaybackFromGesture() {
-  // Calling play() directly from this trusted gesture satisfies browser audio policies.
-  if (current && !answered && audio.paused) startPreview();
-}
-document.addEventListener("pointerdown", retryPlaybackFromGesture, true);
-document.addEventListener("keydown", retryPlaybackFromGesture, true);
+document.addEventListener("pointerdown", () => {
+  if (autoplayBlocked && current && !answered) startPreview();
+}, true);
+document.addEventListener("keydown", () => {
+  if (autoplayBlocked && current && !answered) startPreview();
+}, true);
 audio.addEventListener("timeupdate", () => {
   if (audio.currentTime >= 28.5 && !fadingOut) {
     fadingOut = true;

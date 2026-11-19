@@ -29,7 +29,7 @@ Then visit http://localhost:8000.
 
 ## Gameplay controls
 
-- The mystery album is displayed separately above the timeline; drag its artwork anywhere inside the timeline to place it before, between, or after revealed albums. The nearest insertion position is calculated from the revealed album cards.
+- The mystery album is displayed separately above the timeline; drag its artwork onto one of the marked gaps to place it before, between, or after revealed albums.
 - Dragging uses pointer events, so it supports mouse, pen, and touch input. Keyboard users can focus a timeline gap and press Enter or Space to place the track there.
 - Every album uses the same square artwork dimensions. Album cards are styled like clear physical CD jewel cases, with a cursor-reactive 3D tilt and holographic light sheen on desktop.
 - Album artwork has no title or artist text on it. Revealed release years float underneath each album. Song and artist details appear only in the answer explanation.
@@ -42,7 +42,7 @@ Then visit http://localhost:8000.
 - Apple catalog dates are consistent with the selected Apple entry, but may still represent a later catalog edition rather than the original commercial release. Edition filtering relies on Apple catalog naming, so an oddly named special edition can still slip through, and an ordinary album whose title contains one of the edition markers can be excluded.
 - The prototype compares by year, because many songs have incomplete month/day data. Songs from the same year can therefore be placed in either order.
 - Players start with three hearts. An incorrect placement costs one heart; the game ends at zero hearts. During a game, only one distinct album is allowed for each release year; additional songs from that same album are allowed. The year is reserved when a track is presented, even if the guess is incorrect.
-- Previews attempt to autoplay and fade in over 1.4 seconds, then fade out during the final 1.5 seconds of the 30-second clip. Browsers may block audible autoplay until a user gesture; a click, tap or key press anywhere retries playback without a visible play button. Later rounds attempt to autoplay again.
+- Previews attempt to autoplay and fade in over 1.4 seconds, then fade out during the final 1.5 seconds of the 30-second clip. Browsers may block audible autoplay until the first user interaction; any click, tap or key press retries playback. Later rounds attempt to autoplay again.
 - Browser access to third-party APIs depends on their current CORS policies, network availability and service terms. If a provider blocks browser requests, a small proxy/backend will be needed.
 - Apple preview URLs and artwork are supplied by Apple. Review Apple's terms before commercial use. 
 
@@ -52,3 +52,9 @@ Then visit http://localhost:8000.
 - Expand the seed catalog and pre-validate song/artist matches.
 - Add genre, decade, difficulty and multiplayer modes.
 - Use a curated dataset with verified original release dates.
+
+
+## Latest interface update
+- Removed the large introductory hero/header copy to give the game more vertical room.
+- Removed all visible drop-slot indicators from the timeline.
+- While dragging, an empty animated gap opens between albums; nearby albums slide apart to make room.

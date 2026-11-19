@@ -29,8 +29,10 @@ Then visit http://localhost:8000.
 
 ## Gameplay controls
 
-- Drag the mystery-track card onto one of the marked gaps in the timeline to place it before, between, or after revealed songs.
+- The mystery album is displayed separately above the timeline; drag its artwork onto one of the marked gaps to place it before, between, or after revealed albums.
 - Dragging uses pointer events, so it supports mouse, pen, and touch input. Keyboard users can focus a timeline gap and press Enter or Space to place the track there.
+- Every album uses the same square artwork dimensions. Album cards are styled like clear physical CD jewel cases, with a cursor-reactive 3D tilt and holographic light sheen on desktop.
+- Album artwork has no title or artist text on it. Revealed release years float underneath each album. Song and artist details appear only in the answer explanation.
 - The old row of placement buttons has been removed; the timeline gaps are the placement targets.
 
 ## Important limitations

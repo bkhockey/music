@@ -94,7 +94,9 @@ async function getTrack(seed) {
 function setCover(url) {
   const img = $("mystery-cover"), placeholder = $("cover-placeholder");
   if (url) { img.src = url; img.style.display = "block"; placeholder.style.display = "none"; }
-  else { img.style.display = "none"; placeholder.style.display = "block"; }
+  else { img.removeAttribute("src"); img.style.display = "none"; placeholder.style.display = "grid"; }
+  $("mystery-year").textContent = "";
+  $("drag-card").classList.toggle("has-art", Boolean(url));
 }
 
 function cancelFade() {
@@ -187,6 +189,29 @@ async function loadNext() {
   await startPreview();
 }
 
+function addTiltEffect(card) {
+  if (card.dataset.tiltReady) return;
+  card.dataset.tiltReady = "true";
+  card.addEventListener("pointermove", event => {
+    if (event.pointerType !== "mouse" || dragState) return;
+    const rect = card.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    const rotateY = (x - 0.5) * 22;
+    const rotateX = (0.5 - y) * 22;
+    card.style.setProperty("--tilt-x", `${rotateX.toFixed(2)}deg`);
+    card.style.setProperty("--tilt-y", `${rotateY.toFixed(2)}deg`);
+    card.style.setProperty("--shine-x", `${(x * 100).toFixed(1)}%`);
+    card.style.setProperty("--shine-y", `${(y * 100).toFixed(1)}%`);
+    card.classList.add("is-tilting");
+  });
+  card.addEventListener("pointerleave", () => {
+    card.style.setProperty("--tilt-x", "0deg");
+    card.style.setProperty("--tilt-y", "0deg");
+    card.classList.remove("is-tilting");
+  });
+}
+
 function renderTimeline() {
   const host = $("timeline");
   host.innerHTML = "";
@@ -195,10 +220,10 @@ function renderTimeline() {
     const slot = document.createElement("div");
     slot.className = "drop-slot";
     slot.dataset.position = position;
-    slot.setAttribute("aria-label", `Place mystery song at position ${position + 1}`);
+    slot.setAttribute("aria-label", `Place mystery album at position ${position + 1}`);
     slot.setAttribute("role", "button");
     slot.tabIndex = 0;
-    slot.innerHTML = `<span class="drop-plus">+</span><span class="drop-label">Drop here</span>`;
+    slot.innerHTML = `<span class="drop-plus">+</span><span class="drop-label">Drop album</span>`;
     slot.addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -208,20 +233,15 @@ function renderTimeline() {
     host.appendChild(slot);
   };
 
-  if (!timeline.length) {
-    makeDropSlot(0);
-    return;
-  }
-
   makeDropSlot(0);
   timeline.forEach((track, index) => {
     const el = document.createElement("div");
-    el.className = "song-tile";
-    el.innerHTML = `<div><div class="year">${track.year}</div><div class="song-name"></div><div class="artist"></div></div><img class="tiny-cover" alt="" src="">`;
-    el.querySelector(".song-name").textContent = track.title;
-    el.querySelector(".artist").textContent = track.artist;
-    if (track.artwork) el.querySelector("img").src = track.artwork;
-    else el.querySelector("img").style.visibility = "hidden";
+    el.className = "album-card timeline-album";
+    el.innerHTML = `<div class="cd-case"><img alt="Album artwork" src=""><span class="card-glare" aria-hidden="true"></span></div><div class="year-float"></div>`;
+    const image = el.querySelector("img");
+    if (track.artwork) image.src = track.artwork;
+    el.querySelector(".year-float").textContent = track.year;
+    addTiltEffect(el);
     host.appendChild(el);
     makeDropSlot(index + 1);
   });
@@ -231,13 +251,14 @@ function renderTimeline() {
 // Pointer-based dragging works with mouse, pen, and touch screens.
 let dragState = null;
 const dragCard = $("drag-card");
+addTiltEffect(dragCard);
 
 dragCard.addEventListener("pointerdown", event => {
   if (answered || !current || event.target.closest("button")) return;
   event.preventDefault();
   const ghost = document.createElement("div");
   ghost.className = "drag-ghost";
-  ghost.innerHTML = `<span>♪</span><span>Mystery track</span>`;
+  ghost.innerHTML = `<div class="cd-case"><img alt="" src="${current.artwork || ""}"><span class="card-glare"></span></div>`;
   document.body.appendChild(ghost);
   dragState = { pointerId: event.pointerId, ghost, position: null };
   dragCard.classList.add("is-dragging");
@@ -247,8 +268,8 @@ dragCard.addEventListener("pointerdown", event => {
 
 function moveDragGhost(event) {
   if (!dragState) return;
-  dragState.ghost.style.left = `${event.clientX + 14}px`;
-  dragState.ghost.style.top = `${event.clientY + 14}px`;
+  dragState.ghost.style.left = `${event.clientX + 16}px`;
+  dragState.ghost.style.top = `${event.clientY + 16}px`;
 }
 
 function updateDropTarget(x, y) {
@@ -300,6 +321,7 @@ function placeAt(position) {
   $("mystery-title").textContent = current.title;
   $("mystery-artist").textContent = `${current.artist} · ${current.album}`;
   setCover(current.artwork);
+  $("mystery-year").textContent = current.year;
   const result = $("result");
   result.className = `result ${correct ? "" : "wrong"}`;
   const dateText = current.date.length === 4 ? current.date : current.date;

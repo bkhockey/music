@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#111827">
+  <meta name="theme-color" content="#0b1020">
   <title>TrackTime — Song Timeline</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -20,19 +20,23 @@
     <section class="intro">
       <p class="eyebrow">THE MUSIC CHRONOLOGY GAME</p>
       <h1>When did it <span>drop?</span></h1>
-      <p class="sub">Listen to the preview, then place the mystery track in the right spot on your timeline.</p>
+      <p class="sub">Listen to the preview, then drag the mystery album into the right place on your timeline.</p>
     </section>
 
-    <section class="game-card">
-      <div class="card-head" id="drag-card" role="button" tabindex="0" aria-label="Drag the mystery track to a position on your timeline">
+    <section class="mystery-section" aria-label="Mystery album and music player">
+      <div class="mystery-heading">
         <div>
-          <p class="eyebrow">MYSTERY TRACK</p>
-          <h2 id="mystery-title">Loading your first track…</h2>
-          <p class="muted" id="mystery-artist">Artist and release date are hidden</p>
+          <p class="eyebrow">MYSTERY ALBUM</p>
+          <h2>Take a listen</h2>
+          <p class="muted">Drag the album artwork into a gap on your timeline.</p>
         </div>
-        <div class="cover-wrap">
-          <img id="mystery-cover" alt="Mystery album cover" src="">
-          <span class="cover-placeholder" id="cover-placeholder">♪</span>
+        <div id="drag-card" class="album-card mystery-album" role="button" tabindex="0" aria-label="Drag the mystery album to a position on your timeline">
+          <div class="cd-case">
+            <img id="mystery-cover" alt="Mystery album artwork" src="">
+            <span class="cover-placeholder" id="cover-placeholder">♪</span>
+            <span class="card-glare" aria-hidden="true"></span>
+          </div>
+          <div class="year-float" id="mystery-year" aria-live="polite"></div>
         </div>
       </div>
 
@@ -44,19 +48,21 @@
           <audio id="audio" preload="none"></audio>
         </div>
       </div>
-      <p class="hint" id="track-hint">Previews fade in and out gently. Your browser may require one click before it allows automatic playback.</p>
+      <p class="hint" id="track-hint">Album artwork is the only clue. Previews fade in and out gently; your browser may require one click before automatic playback.</p>
       <div id="error-box" class="notice hidden"></div>
+      <span id="mystery-title" hidden>Mystery track</span>
+      <span id="mystery-artist" hidden>Artist and release date are hidden</span>
     </section>
 
     <section class="timeline-section">
       <div class="section-title">
-        <div><p class="eyebrow">YOUR TIMELINE</p><h2>Place the track</h2></div>
+        <div><p class="eyebrow">YOUR TIMELINE</p><h2>Place the album</h2></div>
         <div class="status-cluster">
           <div class="hearts" id="hearts" aria-label="3 hearts remaining">♥ ♥ ♥</div>
-          <div class="status-cluster"><div class="hearts" id="hearts" aria-label="3 hearts remaining">♥ ♥ ♥</div><div class="score"><strong id="score">0</strong><span>correct</span></div></div>
+          <div class="score"><strong id="score">0</strong><span>correct</span></div>
         </div>
       </div>
-      <p class="muted instruction">Drag the mystery track and drop it in the gap where it belongs.</p>
+      <p class="muted instruction">Drop the mystery album between the years where you think it belongs.</p>
       <div id="timeline" class="timeline" aria-label="Song timeline"></div>
       <div id="result" class="result hidden" aria-live="polite"></div>
       <div class="next-row"><button id="next-button" class="primary" disabled>Next track <span>→</span></button></div>

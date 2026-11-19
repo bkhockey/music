@@ -20,7 +20,7 @@
     audioStatus: $("audio-status"), timeline: $("timeline"), viewport: $("timeline-viewport"),
     hint: $("timeline-hint"), feedback: $("feedback"), audio: $("preview-audio"),
     loading: $("loading-screen"), loadingMessage: $("loading-message"),
-    gameOver: $("game-over"), finalScore: $("final-score"),
+    gameOver: $("game-over"), finalScore: $("final-score"), summary: $("game-summary"),
     restart: $("restart-button"), error: $("error-screen"),
     errorMessage: $("error-message"), retry: $("retry-button")
   };
@@ -28,7 +28,7 @@
   const state = {
     catalog: [], timeline: [], current: null, hearts: 3, rounds: 1,
     score: 0, busy: false, drag: null, insertion: null, autoplayBlocked: false,
-    audioToken: 0, recent: [], started: false
+    audioToken: 0, recent: [], started: false, history: []
   };
 
   function safeJSON(value, fallback) {
@@ -147,6 +147,7 @@
         year,
         artwork,
         genre: album.primaryGenreName || albumTracks[0].primaryGenreName || "Other",
+        albumUrl: album.collectionViewUrl || `https://music.apple.com/album/id${album.collectionId}`,
         tracks: cleanTracks.map(track => ({
           id: String(track.trackId),
           title: track.trackName,
@@ -175,8 +176,7 @@
     const usedYears = new Map(state.timeline.map(item => [item.year, item.collectionId]));
     const recentSet = new Set(state.recent.map(String));
     let candidates = state.catalog.filter(album => {
-      const occupiedBy = usedYears.get(album.year);
-      return !occupiedBy || occupiedBy === album.collectionId;
+      return !usedYears.has(album.year);
     });
     if (excludeRecent) {
       const freshCandidates = candidates.filter(album => album.tracks.some(track => !recentSet.has(track.id)));
@@ -333,6 +333,8 @@
     };
     ui.mystery.setPointerCapture(event.pointerId);
     ui.mystery.classList.add("dragging");
+    const targetSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--album-size")) || 94;
+    state.drag.scale = Math.min(1, targetSize / rect.width);
   }
 
   function pointerMove(event) {
@@ -340,7 +342,8 @@
     const dx = event.clientX - state.drag.startX;
     const dy = event.clientY - state.drag.startY;
     if (Math.abs(dx) + Math.abs(dy) > 5) state.drag.moved = true;
-    ui.mystery.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(1.025)`;
+    const scale = state.drag.scale;
+    ui.mystery.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${scale})`;
     const index = getInsertionIndex(event.clientX);
     updatePush(index);
     if (state.drag.moved) ui.hint.textContent = "Release to place your guess";
@@ -355,7 +358,9 @@
     ui.mystery.classList.remove("dragging");
     ui.mystery.style.transform = "";
     clearPush();
-    if (moved) submitGuess(index);
+    const bounds = ui.viewport.getBoundingClientRect();
+    const overTimeline = event.clientY >= bounds.top - 25 && event.clientY <= bounds.bottom + 25;
+    if (moved && overTimeline) submitGuess(index);
     else ui.hint.textContent = "Drag the cover to its place";
   }
 
@@ -382,6 +387,7 @@
     const correct = correctInsertion(index, album);
     saveRecent(album.track.id);
 
+    state.history.push({ ...album, result: correct ? "correct" : "incorrect" });
     if (correct) {
       state.timeline.splice(index, 0, album);
       state.score++;
@@ -395,6 +401,9 @@
     }
 
     state.hearts--;
+    const actualIndex = state.timeline.findIndex(item => item.year > album.year);
+    state.timeline.splice(actualIndex < 0 ? state.timeline.length : actualIndex, 0, album);
+    renderTimeline();
     renderHearts();
     ui.feedback.textContent = `Not quite — ${album.album} was released in ${album.year}.`;
     ui.feedback.className = "feedback wrong";
@@ -423,13 +432,49 @@
     state.busy = true;
     stopPreview();
     ui.finalScore.textContent = `You placed ${state.score} ${state.score === 1 ? "album" : "albums"} and reached round ${state.rounds}.`;
+    renderSummary();
     ui.gameOver.classList.remove("hidden");
+  }
+
+  function renderSummary() {
+    ui.summary.replaceChildren();
+    for (const album of [...state.history].sort((a, b) => a.year - b.year)) {
+      const item = document.createElement("li");
+      item.className = "summary-item";
+      const img = document.createElement("img");
+      img.src = album.artwork;
+      img.alt = "";
+      img.onerror = () => { img.src = fallbackArtwork(); };
+      const details = document.createElement("div");
+      details.className = "summary-details";
+      const name = document.createElement("strong");
+      name.textContent = album.track?.title || album.album;
+      const description = document.createElement("span");
+      description.textContent = `${album.artist} · ${album.album} · ${album.year}`;
+      const result = document.createElement("span");
+      result.className = `summary-result ${album.result}`;
+      result.textContent = album.result === "starter" ? "Starting album" : album.result === "correct" ? "✓ Correct" : "✕ Missed";
+      details.append(name, description, result);
+      item.append(img, details);
+      if (album.albumUrl) {
+        const link = document.createElement("a");
+        link.href = album.albumUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Album ↗";
+        link.setAttribute("aria-label", `Open ${album.album} on Apple Music`);
+        item.append(link);
+      }
+      ui.summary.append(item);
+    }
   }
 
   async function startGame() {
     state.busy = true;
     state.drag = null;
     state.timeline = [];
+    state.history = [];
+    ui.summary.replaceChildren();
     state.current = null;
     state.hearts = 3;
     state.rounds = 1;
@@ -447,6 +492,7 @@
       const starter = pickAlbum(false);
       if (!starter) throw new Error("No suitable starting album could be selected.");
       state.timeline = [{ ...starter, track: starter.track }];
+      state.history.push({ ...starter, result: "starter" });
       renderTimeline();
       const mystery = pickAlbum(true);
       if (!mystery) throw new Error("Not enough different album years are available.");

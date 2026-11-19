@@ -169,3 +169,20 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Compact drag preview and full game recap */
+.mystery-card { transform-origin: center center; }
+.mystery-card.dragging { filter: drop-shadow(0 10px 14px #000b); }
+#game-over .dialog-card { width: min(680px, 100%); max-height: min(90vh, 850px); overflow-y: auto; }
+.summary-heading { margin: 22px 0 12px; text-align: left; font-size: 15px; }
+.game-summary { list-style: none; margin: 0; padding: 0; text-align: left; }
+.summary-item { display: flex; align-items: center; gap: 13px; padding: 11px 0; border-top: 1px solid #ffffff18; }
+.summary-item img { width: 54px; height: 54px; object-fit: cover; border-radius: 4px; flex: none; }
+.summary-details { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.summary-details strong { font-size: 13px; overflow-wrap: anywhere; }
+.summary-details span { color: #a7a9b2; font-size: 11px; line-height: 1.4; }
+.summary-details .summary-result.correct { color: var(--accent); }
+.summary-details .summary-result.incorrect { color: var(--danger); }
+.summary-item a { color: var(--accent); font-size: 11px; white-space: nowrap; text-decoration: none; }
+.summary-item a:hover { text-decoration: underline; }
+@media (max-width: 650px) { #game-over .dialog-card { padding: 24px 18px; } .summary-item { gap: 9px; } .summary-item img { width: 44px; height: 44px; } }

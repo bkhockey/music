@@ -15,7 +15,7 @@ const SEEDS = [
 
 const $ = id => document.getElementById(id);
 const audio = $("audio");
-let timeline = [], current = null, round = 1, score = 0, hearts = 3, answered = false, audioUnlocked = false, fadeFrame = null, fadingOut = false;
+let timeline = [], current = null, round = 1, score = 0, hearts = 3, answered = false, fadeFrame = null, fadingOut = false, autoplayBlocked = false;
 // A game may use several songs from one album, but never different albums for the same year.
 let albumByYear = new Map();
 const TARGET_VOLUME = 0.62;
@@ -127,32 +127,14 @@ async function startPreview() {
   audio.volume = 0;
   try {
     await audio.play();
-    audioUnlocked = true;
-    fadeVolume(TARGET_VOLUME, 900);
+    autoplayBlocked = false;
+    fadeVolume(TARGET_VOLUME, 1400);
     return true;
   } catch (e) {
     audio.volume = TARGET_VOLUME;
+    autoplayBlocked = true;
     return false;
   }
-}
-
-function stopPreview() {
-  if (audio.paused) return;
-  cancelFade();
-  const from = audio.volume;
-  const started = performance.now();
-  const duration = 420;
-  const step = now => {
-    const progress = Math.min(1, (now - started) / duration);
-    audio.volume = Math.max(0, from * (1 - progress));
-    if (progress < 1) fadeFrame = requestAnimationFrame(step);
-    else {
-      fadeFrame = null;
-      audio.pause();
-      audio.volume = TARGET_VOLUME;
-    }
-  };
-  fadeFrame = requestAnimationFrame(step);
 }
 
 function resetPlayer() {
@@ -162,6 +144,7 @@ function resetPlayer() {
 }
 
 async function loadNext() {
+  current = null;
   answered = false;
   $("next-button").disabled = true;
   $("result").className = "result hidden";
@@ -194,6 +177,9 @@ async function loadNext() {
   $("mystery-title").textContent = "Mystery track";
   audio.src = current.preview;
   renderTimeline();
+  // Attempt audible autoplay. If the browser blocks it, the first user gesture
+  // anywhere on the page retries playback without showing a play button.
+  await startPreview();
 }
 
 function addTiltEffect(card) {
@@ -223,7 +209,25 @@ function renderTimeline() {
   const host = $("timeline");
   host.innerHTML = "";
 
-  timeline.forEach(track => {
+  const makeDropSlot = position => {
+    const slot = document.createElement("div");
+    slot.className = "drop-slot";
+    slot.dataset.position = position;
+    slot.setAttribute("aria-label", `Place mystery album at position ${position + 1}`);
+    slot.setAttribute("role", "button");
+    slot.tabIndex = 0;
+    slot.innerHTML = `<span class="drop-plus">+</span><span class="drop-label">Drop album</span>`;
+    slot.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        placeAt(position);
+      }
+    });
+    host.appendChild(slot);
+  };
+
+  makeDropSlot(0);
+  timeline.forEach((track, index) => {
     const el = document.createElement("div");
     el.className = "album-card timeline-album";
     el.innerHTML = `<div class="cd-case"><img alt="Album artwork" src=""><span class="card-glare" aria-hidden="true"></span></div><div class="year-float"></div>`;
@@ -232,6 +236,7 @@ function renderTimeline() {
     el.querySelector(".year-float").textContent = track.year;
     addTiltEffect(el);
     host.appendChild(el);
+    makeDropSlot(index + 1);
   });
 }
 
@@ -241,27 +246,8 @@ let dragState = null;
 const dragCard = $("drag-card");
 addTiltEffect(dragCard);
 
-dragCard.addEventListener("pointerenter", event => {
-  if (event.pointerType === "mouse" && current && !answered) startPreview();
-});
-dragCard.addEventListener("pointerleave", event => {
-  if (event.pointerType === "mouse" && !dragState) stopPreview();
-});
-dragCard.addEventListener("click", () => {
-  // Click/tap fallback for browsers that block playback from hover alone.
-  if (audio.paused && current && !answered) startPreview();
-});
-dragCard.addEventListener("keydown", event => {
-  if ((event.key === "Enter" || event.key === " ") && current && !answered) {
-    event.preventDefault();
-    if (audio.paused) startPreview(); else stopPreview();
-  }
-});
-
 dragCard.addEventListener("pointerdown", event => {
   if (answered || !current || event.target.closest("button")) return;
-  // Also attempt playback on pointer-down: browsers may reject media started by hover alone.
-  startPreview();
   event.preventDefault();
   const ghost = document.createElement("div");
   ghost.className = "drag-ghost";
@@ -281,20 +267,10 @@ function moveDragGhost(event) {
 
 function updateDropTarget(x, y) {
   if (!dragState) return;
-  const host = $("timeline");
-  const rect = host.getBoundingClientRect();
-  const inside = x >= rect.left && x <= rect.right && y >= rect.top - 18 && y <= rect.bottom + 18;
-  if (!inside) {
-    dragState.position = null;
-    return;
-  }
-  const albums = [...host.querySelectorAll(".timeline-album")];
-  let position = albums.length;
-  for (let i = 0; i < albums.length; i++) {
-    const r = albums[i].getBoundingClientRect();
-    if (x < r.left + r.width / 2) { position = i; break; }
-  }
-  dragState.position = position;
+  document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
+  const target = document.elementFromPoint(x, y)?.closest(".drop-slot");
+  dragState.position = target ? Number(target.dataset.position) : null;
+  if (target) target.classList.add("is-active");
 }
 
 window.addEventListener("pointermove", event => {
@@ -309,7 +285,7 @@ function finishDrag(event) {
   dragState.ghost.remove();
   dragState = null;
   dragCard.classList.remove("is-dragging");
-  stopPreview();
+  document.querySelectorAll(".drop-slot.is-active").forEach(el => el.classList.remove("is-active"));
   if (position !== null && position !== undefined) placeAt(position);
 }
 window.addEventListener("pointerup", finishDrag);
@@ -325,7 +301,6 @@ function updateHearts() {
 function placeAt(position) {
   if (answered || !current) return;
   answered = true;
-  stopPreview();
   const left = timeline[position-1], right = timeline[position];
   const correct = (!left || left.year <= current.year) && (!right || current.year <= right.year);
   if (correct) {
@@ -363,38 +338,62 @@ function escapeHTML(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
+document.addEventListener("pointerdown", () => {
+  if (autoplayBlocked && current && !answered) startPreview();
+}, true);
+document.addEventListener("keydown", () => {
+  if (autoplayBlocked && current && !answered) startPreview();
+}, true);
 audio.addEventListener("timeupdate", () => {
   if (audio.currentTime >= 28.5 && !fadingOut) {
     fadingOut = true;
     fadeVolume(0, 1500);
   }
-  if (audio.currentTime >= 30) {
-    audio.pause();
-    audio.currentTime = 0;
-    audio.volume = TARGET_VOLUME;
-    fadingOut = false;
-  }
+  if (audio.currentTime >= 30) audio.pause();
 });
 audio.addEventListener("ended", () => {
   cancelFade(); audio.volume = TARGET_VOLUME; fadingOut = false;
 });
-$("next-button").addEventListener("click", () => {
-  if ($("next-button").dataset.action === "restart") {
-    timeline = []; albumByYear = new Map(); score = 0; hearts = 3; round = 1; current = null;
-    $("score").textContent = "0"; updateHearts();
-    $("next-button").dataset.action = "next";
-    $("next-button").innerHTML = `Next track <span>→</span>`;
-    renderTimeline(); loadNext();
-  } else loadNext();
-});
-$("new-game").addEventListener("click", () => {
+async function loadStartingTrack() {
+  const candidates = shuffle(SEEDS);
+  for (const seed of candidates) {
+    try {
+      const track = await getTrack(seed);
+      if (track) {
+        const starter = {...track, seed};
+        timeline = [starter];
+        albumByYear.set(track.year, albumKey(track.album));
+        renderTimeline();
+        return true;
+      }
+    } catch (e) { console.warn(e); }
+  }
+  $("error-box").textContent = "Couldn't load a starting song from Apple's catalog. Please try a new game in a moment.";
+  $("error-box").classList.remove("hidden");
+  return false;
+}
+
+async function startNewGame() {
   timeline = []; albumByYear = new Map(); score = 0; hearts = 3; round = 1; current = null;
+  answered = false; autoplayBlocked = false;
+  setCover(null); resetPlayer();
   $("score").textContent = "0"; updateHearts();
+  $("next-button").disabled = true;
   $("next-button").dataset.action = "next";
   $("next-button").innerHTML = `Next track <span>→</span>`;
-  renderTimeline(); loadNext();
+  $("result").className = "result hidden";
+  $("error-box").classList.add("hidden");
+  $("round-label").textContent = "ROUND 1";
+  renderTimeline();
+  await loadStartingTrack();
+  await loadNext();
+}
+
+$("next-button").addEventListener("click", () => {
+  if ($("next-button").dataset.action === "restart") startNewGame();
+  else loadNext();
 });
+$("new-game").addEventListener("click", startNewGame);
 
 updateHearts();
-renderTimeline();
-loadNext();
+startNewGame();

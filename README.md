@@ -42,7 +42,7 @@ Then visit http://localhost:8000.
 - Apple catalog dates are consistent with the selected Apple entry, but may still represent a later catalog edition rather than the original commercial release. Edition filtering relies on Apple catalog naming, so an oddly named special edition can still slip through, and an ordinary album whose title contains one of the edition markers can be excluded.
 - The prototype compares by year, because many songs have incomplete month/day data. Songs from the same year can therefore be placed in either order.
 - Players start with three hearts. An incorrect placement costs one heart; the game ends at zero hearts. During a game, only one distinct album is allowed for each release year; additional songs from that same album are allowed. The year is reserved when a track is presented, even if the guess is incorrect.
-- Previews fade in over 1.4 seconds and fade out during the final 1.5 seconds of the 30-second clip. Browsers generally block audible autoplay until the player clicks once; after that, the next previews attempt to start automatically.
+- Previews attempt to autoplay and fade in over 1.4 seconds, then fade out during the final 1.5 seconds of the 30-second clip. Browsers may block audible autoplay until the first user interaction; any click, tap or key press retries playback. Later rounds attempt to autoplay again.
 - Browser access to third-party APIs depends on their current CORS policies, network availability and service terms. If a provider blocks browser requests, a small proxy/backend will be needed.
 - Apple preview URLs and artwork are supplied by Apple. Review Apple's terms before commercial use. 
 
@@ -52,11 +52,3 @@ Then visit http://localhost:8000.
 - Expand the seed catalog and pre-validate song/artist matches.
 - Add genre, decade, difficulty and multiplayer modes.
 - Use a curated dataset with verified original release dates.
-
-
-## v7 interaction updates
-- Removed the visible play button, player bar, and preview duration display.
-- Hovering over the mystery CD starts playback with a short fade-in; moving away fades out and pauses. Browsers that block hover playback can use a click/tap or keyboard activation as a fallback.
-- Touch devices start playback on the initial tap/drag gesture.
-- Enlarged the mystery CD artwork.
-- Removed visible drop-slot indicators. Drop position is calculated from the pointer's horizontal position over the timeline.

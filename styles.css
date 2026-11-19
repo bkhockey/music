@@ -46,19 +46,9 @@
 @media(prefers-reduced-motion:reduce){.album-card,.card-glare,.drop-slot{transition:none!important}}
 
 
-/* TrackTime v7 — hover-to-listen and indicator-free timeline */
-.mystery-heading { gap: 22px; }
-.mystery-album { width: clamp(180px, 24vw, 232px); flex-basis: clamp(180px, 24vw, 232px); }
-.mystery-album .cd-case { box-shadow: inset 1px 1px 2px #ffffffb0, inset -3px -3px 5px #0009, 0 5px 10px #0009, 0 28px 48px #000b; }
-.mystery-album:hover { filter: drop-shadow(0 24px 24px #0009); }
-.timeline { align-items: flex-start; min-height: 220px; padding: 24px 8px 30px; gap: 14px; }
-.timeline-album { width: clamp(112px, 15vw, 154px); min-width: clamp(112px, 15vw, 154px); flex: 0 0 clamp(112px, 15vw, 154px); }
-.timeline:empty { min-height: 190px; }
-.drag-ghost { width: 132px; height: 132px; padding: 0; border: 0; background: transparent; box-shadow: none; }
-.drag-ghost .cd-case { width: 132px; border-radius: 6px; }
-@media(max-width:600px) {
-  .mystery-album { width: 176px; flex-basis: 176px; }
-  .timeline { min-height: 175px; gap: 9px; padding: 18px 5px 25px; }
-  .timeline-album { width: 112px; min-width: 112px; flex-basis: 112px; }
-  .drag-ghost, .drag-ghost .cd-case { width: 104px; height: 104px; }
-}
+/* TrackTime v6 refresh: larger mystery CD, no visible audio controls. */
+.mystery-album{width:clamp(190px,27vw,238px);flex-basis:clamp(190px,27vw,238px)}
+.mystery-album .year-float{font-size:27px}
+.player{display:none}
+.hint{max-width:600px;margin:15px auto 0;text-align:center}
+@media(max-width:600px){.mystery-album{width:184px;flex-basis:184px}.mystery-album .year-float{font-size:24px}}
